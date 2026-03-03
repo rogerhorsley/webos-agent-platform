@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { dbGetAll, dbGetOne, dbInsert, dbUpdate, dbDelete, dbExists } from '../db/index'
 
 const WorkflowSchema = z.object({
   name: z.string().min(1),
@@ -9,79 +10,44 @@ const WorkflowSchema = z.object({
   variables: z.record(z.any()).optional(),
 })
 
-// In-memory store
-const workflows: Map<string, any> = new Map()
-
 export async function workflowRoutes(fastify: FastifyInstance) {
-  // List workflows
-  fastify.get('/', async () => {
-    return Array.from(workflows.values())
-  })
+  fastify.get('/', async () => dbGetAll('workflows'))
 
-  // Get workflow
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const workflow = workflows.get(id)
-    if (!workflow) {
-      return reply.status(404).send({ error: 'Workflow not found' })
-    }
-    return workflow
+    const wf = dbGetOne('workflows', id)
+    if (!wf) return reply.status(404).send({ error: 'Workflow not found' })
+    return wf
   })
 
-  // Create workflow
   fastify.post('/', async (request, reply) => {
     const body = WorkflowSchema.parse(request.body)
     const id = crypto.randomUUID()
-    const workflow = {
-      id,
-      ...body,
-      status: 'draft',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
-    workflows.set(id, workflow)
-    return reply.status(201).send(workflow)
+    const now = new Date().toISOString()
+    dbInsert('workflows', { id, ...body, status: 'draft', createdAt: now, updatedAt: now })
+    return reply.status(201).send(dbGetOne('workflows', id))
   })
 
-  // Update workflow
   fastify.put('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const existing = workflows.get(id)
-    if (!existing) {
-      return reply.status(404).send({ error: 'Workflow not found' })
-    }
+    if (!dbExists('workflows', id)) return reply.status(404).send({ error: 'Workflow not found' })
     const body = WorkflowSchema.partial().parse(request.body)
-    const updated = {
-      ...existing,
-      ...body,
-      updatedAt: new Date().toISOString(),
-    }
-    workflows.set(id, updated)
-    return updated
+    dbUpdate('workflows', id, { ...body, updatedAt: new Date().toISOString() })
+    return dbGetOne('workflows', id)
   })
 
-  // Delete workflow
   fastify.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    if (!workflows.has(id)) {
-      return reply.status(404).send({ error: 'Workflow not found' })
-    }
-    workflows.delete(id)
+    if (!dbExists('workflows', id)) return reply.status(404).send({ error: 'Workflow not found' })
+    dbDelete('workflows', id)
     return reply.status(204).send()
   })
 
-  // Run workflow
   fastify.post('/:id/run', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const workflow = workflows.get(id)
-    if (!workflow) {
-      return reply.status(404).send({ error: 'Workflow not found' })
-    }
-
-    // TODO: Implement workflow execution engine
-    const runId = crypto.randomUUID()
+    if (!dbExists('workflows', id)) return reply.status(404).send({ error: 'Workflow not found' })
     return {
-      runId,
+      runId: crypto.randomUUID(),
       workflowId: id,
       status: 'started',
       startedAt: new Date().toISOString(),

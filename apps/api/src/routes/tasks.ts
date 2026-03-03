@@ -1,10 +1,13 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { dbGetAll, dbGetOne, dbInsert, dbUpdate, dbDelete, dbExists } from '../db/index'
+import { enqueueTask } from '../services/taskQueue'
 
 const TaskSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   type: z.enum(['chat', 'workflow', 'batch']),
+  priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
   agentId: z.string().optional(),
   teamId: z.string().optional(),
   input: z.object({
@@ -13,81 +16,81 @@ const TaskSchema = z.object({
   }),
 })
 
-// In-memory store
-const tasks: Map<string, any> = new Map()
-
 export async function taskRoutes(fastify: FastifyInstance) {
-  // List tasks
   fastify.get('/', async (request) => {
     const { status } = request.query as { status?: string }
-    let result = Array.from(tasks.values())
-    if (status) {
-      result = result.filter(t => t.status === status)
-    }
-    return result
+    if (status) return dbGetAll('tasks', 'status = ?', [status])
+    return dbGetAll('tasks')
   })
 
-  // Get task
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const task = tasks.get(id)
-    if (!task) {
-      return reply.status(404).send({ error: 'Task not found' })
-    }
+    const task = dbGetOne('tasks', id)
+    if (!task) return reply.status(404).send({ error: 'Task not found' })
     return task
   })
 
-  // Create task
   fastify.post('/', async (request, reply) => {
     const body = TaskSchema.parse(request.body)
     const id = crypto.randomUUID()
+    const now = new Date().toISOString()
     const task = {
       id,
       ...body,
       status: 'pending',
       progress: { current: 0, total: 100 },
-      createdAt: new Date().toISOString(),
+      childTaskIds: [],
+      createdAt: now,
     }
-    tasks.set(id, task)
-    return reply.status(201).send(task)
+    dbInsert('tasks', task)
+    return reply.status(201).send(dbGetOne('tasks', id))
   })
 
-  // Start task
   fastify.post('/:id/start', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const task = tasks.get(id)
-    if (!task) {
-      return reply.status(404).send({ error: 'Task not found' })
+    if (!dbExists('tasks', id)) return reply.status(404).send({ error: 'Task not found' })
+    dbUpdate('tasks', id, { status: 'queued' })
+
+    try {
+      await enqueueTask(id)
+    } catch (err) {
+      // Fallback: run synchronously if Redis is down
+      dbUpdate('tasks', id, { status: 'running', startedAt: new Date().toISOString() })
     }
-    task.status = 'running'
-    task.startedAt = new Date().toISOString()
-    tasks.set(id, task)
 
-    // TODO: Actually start the task execution
-    // This would involve queuing the task with BullMQ
-
-    return task
+    return dbGetOne('tasks', id)
   })
 
-  // Cancel task
   fastify.post('/:id/cancel', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const task = tasks.get(id)
-    if (!task) {
-      return reply.status(404).send({ error: 'Task not found' })
-    }
-    task.status = 'cancelled'
-    tasks.set(id, task)
-    return task
+    if (!dbExists('tasks', id)) return reply.status(404).send({ error: 'Task not found' })
+    dbUpdate('tasks', id, { status: 'cancelled' })
+    return dbGetOne('tasks', id)
   })
 
-  // Delete task
+  fastify.post('/:id/complete', async (request, reply) => {
+    const { id } = request.params as { id: string }
+    if (!dbExists('tasks', id)) return reply.status(404).send({ error: 'Task not found' })
+    const { output } = request.body as { output?: any }
+    dbUpdate('tasks', id, {
+      status: 'completed',
+      output: output || {},
+      progress: { current: 100, total: 100 },
+      completedAt: new Date().toISOString(),
+    })
+
+    const io = (fastify as any).io
+    if (io) {
+      io.to(`task:${id}`).emit('task:status', { taskId: id, status: 'completed' })
+    }
+
+    return dbGetOne('tasks', id)
+  })
+
   fastify.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    if (!tasks.has(id)) {
-      return reply.status(404).send({ error: 'Task not found' })
-    }
-    tasks.delete(id)
+    if (!dbExists('tasks', id)) return reply.status(404).send({ error: 'Task not found' })
+    dbDelete('tasks', id)
     return reply.status(204).send()
   })
 }

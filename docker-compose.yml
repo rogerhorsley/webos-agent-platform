@@ -1,0 +1,50 @@
+version: '3.9'
+
+services:
+  # ── NexusOS API + Frontend (all-in-one) ─────────────────────────────────
+  api:
+    image: nexusos-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - nexusos-data:/app/apps/api/data
+      - nexusos-workspaces:/app/apps/api/workspaces
+      - nexusos-logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock  # for Docker sandbox mode
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: "0.0.0.0"
+      DATABASE_URL: /app/apps/api/data/nexusos.db
+      DATA_DIR: /app/apps/api/data
+      WORKSPACES_ROOT: /app/apps/api/workspaces
+      REDIS_URL: redis://redis:6379
+      SANDBOX_MODE: ${SANDBOX_MODE:-process}
+      SANDBOX_IMAGE: nexusos-agent:latest
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Redis ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  nexusos-data:
+  nexusos-workspaces:
+  nexusos-logs:
+  redis-data:

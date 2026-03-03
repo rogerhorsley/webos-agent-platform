@@ -1,5 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { dbGetAll, dbGetOne, dbInsert, dbUpdate, dbDelete, dbExists } from '../db/index'
+import { createWorkspace, getWorkspaceInfo } from '../services/workspace'
 
 const AgentSchema = z.object({
   name: z.string().min(1),
@@ -12,64 +14,66 @@ const AgentSchema = z.object({
   }).optional(),
 })
 
-// In-memory store (replace with database)
-const agents: Map<string, any> = new Map()
-
 export async function agentRoutes(fastify: FastifyInstance) {
-  // List agents
   fastify.get('/', async () => {
-    return Array.from(agents.values())
+    return dbGetAll('agents')
   })
 
-  // Get agent
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const agent = agents.get(id)
-    if (!agent) {
-      return reply.status(404).send({ error: 'Agent not found' })
-    }
+    const agent = dbGetOne('agents', id)
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' })
     return agent
   })
 
-  // Create agent
   fastify.post('/', async (request, reply) => {
     const body = AgentSchema.parse(request.body)
     const id = crypto.randomUUID()
-    const agent = {
+    const now = new Date().toISOString()
+    const agent: Record<string, any> = {
       id,
       ...body,
+      skills: [],
+      mcpServers: [],
       status: 'idle',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      workspace: null,
+      createdAt: now,
+      updatedAt: now,
     }
-    agents.set(id, agent)
-    return reply.status(201).send(agent)
+
+    try {
+      const ws = await createWorkspace(id, body.name)
+      agent.workspace = { path: ws.path, createdAt: ws.createdAt }
+    } catch (err) {
+      fastify.log.warn(`Workspace creation failed for ${id}: ${err}`)
+    }
+
+    dbInsert('agents', agent)
+    return reply.status(201).send(dbGetOne('agents', id))
   })
 
-  // Update agent
   fastify.put('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const existing = agents.get(id)
-    if (!existing) {
-      return reply.status(404).send({ error: 'Agent not found' })
-    }
+    if (!dbExists('agents', id)) return reply.status(404).send({ error: 'Agent not found' })
     const body = AgentSchema.partial().parse(request.body)
-    const updated = {
-      ...existing,
-      ...body,
-      updatedAt: new Date().toISOString(),
-    }
-    agents.set(id, updated)
-    return updated
+    dbUpdate('agents', id, { ...body, updatedAt: new Date().toISOString() })
+    return dbGetOne('agents', id)
   })
 
-  // Delete agent
   fastify.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    if (!agents.has(id)) {
-      return reply.status(404).send({ error: 'Agent not found' })
-    }
-    agents.delete(id)
+    if (!dbExists('agents', id)) return reply.status(404).send({ error: 'Agent not found' })
+    dbDelete('agents', id)
     return reply.status(204).send()
+  })
+
+  fastify.get('/:id/workspace', async (request, reply) => {
+    const { id } = request.params as { id: string }
+    if (!dbExists('agents', id)) return reply.status(404).send({ error: 'Agent not found' })
+    try {
+      return await getWorkspaceInfo(id)
+    } catch {
+      return reply.status(404).send({ error: 'Workspace not found' })
+    }
   })
 }

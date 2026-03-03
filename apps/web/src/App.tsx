@@ -1,8 +1,7 @@
-import { useState } from 'react'
 import { Desktop } from './components/Desktop'
 import { Dock } from './components/Dock'
 import { WindowManager } from './components/WindowManager'
-import { useWindowStore } from './stores/windowStore'
+import { GlobalSearch } from './components/GlobalSearch'
 
 function App() {
   return (
@@ -10,6 +9,7 @@ function App() {
       <Desktop />
       <WindowManager />
       <Dock />
+      <GlobalSearch />
     </div>
   )
 }

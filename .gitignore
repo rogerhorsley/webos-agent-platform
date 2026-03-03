@@ -32,3 +32,10 @@ coverage
 
 # Misc
 *.tsbuildinfo
+
+# Production data (never commit)
+apps/api/data/
+apps/api/workspaces/*/
+!apps/api/workspaces/shared/
+logs/
+.env.production

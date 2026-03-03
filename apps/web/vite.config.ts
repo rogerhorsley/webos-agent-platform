@@ -4,9 +4,26 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  css: {
+    // Force PostCSS/Tailwind to reprocess when tailwind.config.js changes
+    postcss: './postcss.config.js',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+    },
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          flow: ['@xyflow/react'],
+          ui: ['lucide-react'],
+        },
+      },
     },
   },
   server: {

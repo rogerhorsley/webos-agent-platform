@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { dbGetAll, dbGetOne, dbInsert, dbUpdate, dbDelete, dbExists } from '../db/index'
 
 const PromptSchema = z.object({
   name: z.string().min(1),
@@ -17,86 +18,62 @@ const PromptSchema = z.object({
   })).optional(),
 })
 
-// In-memory store
-const prompts: Map<string, any> = new Map()
-
 export async function promptRoutes(fastify: FastifyInstance) {
-  // List prompts
-  fastify.get('/', async () => {
-    return Array.from(prompts.values())
-  })
+  fastify.get('/', async () => dbGetAll('prompts'))
 
-  // Get prompt
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const prompt = prompts.get(id)
-    if (!prompt) {
-      return reply.status(404).send({ error: 'Prompt not found' })
-    }
-    return prompt
+    const p = dbGetOne('prompts', id)
+    if (!p) return reply.status(404).send({ error: 'Prompt not found' })
+    return p
   })
 
-  // Create prompt
   fastify.post('/', async (request, reply) => {
     const body = PromptSchema.parse(request.body)
     const id = crypto.randomUUID()
-    const prompt = {
+    const now = new Date().toISOString()
+    dbInsert('prompts', {
       id,
       ...body,
+      variables: body.variables || [],
       version: '1.0.0',
       stats: { useCount: 0, avgRating: 0 },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
-    prompts.set(id, prompt)
-    return reply.status(201).send(prompt)
+      createdAt: now,
+      updatedAt: now,
+    })
+    return reply.status(201).send(dbGetOne('prompts', id))
   })
 
-  // Update prompt
   fastify.put('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    const existing = prompts.get(id)
-    if (!existing) {
-      return reply.status(404).send({ error: 'Prompt not found' })
-    }
+    if (!dbExists('prompts', id)) return reply.status(404).send({ error: 'Prompt not found' })
     const body = PromptSchema.partial().parse(request.body)
-    const updated = {
-      ...existing,
-      ...body,
-      updatedAt: new Date().toISOString(),
-    }
-    prompts.set(id, updated)
-    return updated
+    dbUpdate('prompts', id, { ...body, updatedAt: new Date().toISOString() })
+    return dbGetOne('prompts', id)
   })
 
-  // Delete prompt
   fastify.delete('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
-    if (!prompts.has(id)) {
-      return reply.status(404).send({ error: 'Prompt not found' })
-    }
-    prompts.delete(id)
+    if (!dbExists('prompts', id)) return reply.status(404).send({ error: 'Prompt not found' })
+    dbDelete('prompts', id)
     return reply.status(204).send()
   })
 
-  // Render prompt
   fastify.post('/:id/render', async (request, reply) => {
     const { id } = request.params as { id: string }
     const { variables } = request.body as { variables: Record<string, any> }
-    const prompt = prompts.get(id)
-    if (!prompt) {
-      return reply.status(404).send({ error: 'Prompt not found' })
-    }
+    const prompt = dbGetOne<any>('prompts', id)
+    if (!prompt) return reply.status(404).send({ error: 'Prompt not found' })
 
-    // Simple variable substitution
-    let rendered = prompt.template.user
+    let rendered = prompt.template?.user || ''
     for (const [key, value] of Object.entries(variables || {})) {
       rendered = rendered.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), String(value))
     }
 
-    return {
-      rendered,
-      system: prompt.template.system,
-    }
+    // Track usage
+    const stats = prompt.stats || { useCount: 0, avgRating: 0 }
+    dbUpdate('prompts', id, { stats: { ...stats, useCount: (stats.useCount || 0) + 1 } })
+
+    return { rendered, system: prompt.template?.system }
   })
 }

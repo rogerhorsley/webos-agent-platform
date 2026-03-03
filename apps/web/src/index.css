@@ -2,11 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* ── CSS Variables ─────────────────────────────────────────────────────── */
+:root {
+  --bg:           #0C0C0E;
+  --surface:      #18181B;
+  --dock-bg:      #1C1C1F;
+  --elevated:     #232329;
+  --border:       rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.10);
+  --accent:       #E84C6A;
+  --accent-muted: rgba(232, 76, 106, 0.12);
+  --text-1:       #FAFAFA;
+  --text-2:       #A1A1AA;
+  --text-3:       #71717A;
+  --text-4:       #52525B;
 }
+
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body, #root {
   height: 100%;
@@ -15,32 +28,260 @@ html, body, #root {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg);
+  color: var(--text-1);
 }
 
-/* Window styles */
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+/* ── Selection ──────────────────────────────────────────────────────────── */
+::selection { background: rgba(232, 76, 106, 0.25); color: #FAFAFA; }
+
+/* ── Design Token Overrides ─────────────────────────────────────────────── */
+/* These override Tailwind's cached color classes with CSS variable values */
+.bg-desktop-bg       { background-color: var(--bg) !important; }
+.bg-desktop-surface  { background-color: var(--surface) !important; }
+.bg-desktop-dock     { background-color: var(--dock-bg) !important; }
+.bg-desktop-window   { background-color: var(--surface) !important; }
+.bg-desktop-elevated { background-color: var(--elevated) !important; }
+.bg-desktop-accent   { background-color: var(--accent) !important; }
+.text-desktop-accent { color: var(--accent) !important; }
+.border-desktop-accent { border-color: var(--accent) !important; }
+.text-ink-1          { color: var(--text-1) !important; }
+.text-ink-2          { color: var(--text-2) !important; }
+.text-ink-3          { color: var(--text-3) !important; }
+.text-ink-4          { color: var(--text-4) !important; }
+.text-ink-disabled   { color: rgba(63,63,70,1) !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Window
+══════════════════════════════════════════════════════════════════════════ */
 .window {
-  @apply bg-desktop-window/90 backdrop-blur-md rounded-lg shadow-2xl border border-white/10;
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 12px;
+  /* 精确协议边框 — 顶部内发光 + 整体深阴影 */
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 32px 64px -8px rgba(0,0,0,0.75),
+    0 8px 24px rgba(0,0,0,0.4);
+  overflow: hidden;
+  /* 入场动画 */
+  animation: windowAppear 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+@keyframes windowAppear {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* 标题栏 */
 .window-titlebar {
-  @apply flex items-center justify-between px-4 py-2 bg-black/20 rounded-t-lg cursor-move;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 40px;
+  background: var(--dock-bg);
+  border-bottom: 1px solid var(--border);
+  cursor: move;
+  flex-shrink: 0;
+  user-select: none;
 }
 
+/* 内容区 */
 .window-content {
-  @apply p-4 overflow-auto;
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  min-height: 0;
 }
 
-/* Dock styles */
+/* ══════════════════════════════════════════════════════════════════════════
+   Dock
+══════════════════════════════════════════════════════════════════════════ */
 .dock {
-  @apply fixed bottom-4 left-1/2 -translate-x-1/2 flex gap-2 px-4 py-2 bg-desktop-dock/80 backdrop-blur-lg rounded-2xl border border-white/10;
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(28, 28, 31, 0.88);
+  backdrop-filter: blur(32px) saturate(150%);
+  -webkit-backdrop-filter: blur(32px) saturate(150%);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 24px 48px -8px rgba(0, 0, 0, 0.55),
+    0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .dock-item {
-  @apply w-12 h-12 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-all cursor-pointer hover:scale-110;
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.12s ease;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.dock-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  transform: scale(1.08);
 }
 
 .dock-item.active {
-  @apply bg-desktop-accent/50;
+  background: rgba(232, 76, 106, 0.15);
+  color: #E84C6A;
 }
+
+/* 运行指示点 */
+.dock-item .dot {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Shared App Layout Utilities
+══════════════════════════════════════════════════════════════════════════ */
+
+/* 标准 App 头部 */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+/* 标准卡片 */
+.app-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  transition: border-color 0.12s ease;
+}
+.app-card:hover { border-color: rgba(255, 255, 255, 0.10); }
+
+/* 标准输入框 */
+.app-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-1);
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.12s ease;
+  outline: none;
+}
+.app-input::placeholder { color: var(--text-4); }
+.app-input:focus { border-color: rgba(232, 76, 106, 0.5); }
+
+/* 主按钮 */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+  line-height: 1;
+}
+.btn-primary:hover { opacity: 0.85; }
+.btn-primary:active { opacity: 0.75; transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* 次级按钮 */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  line-height: 1;
+}
+.btn-secondary:hover { background: rgba(255,255,255,0.10); color: var(--text-1); }
+
+/* 标签/徽章 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+/* Overlay (modal backdrop) */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.12s ease;
+}
+
+/* Modal panel */
+.modal {
+  background: var(--elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 0 0 1px rgba(255,255,255,0.03),
+    0 48px 96px -16px rgba(0,0,0,0.8);
+  animation: scaleIn 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+@keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.97) translateY(4px) } to { opacity: 1; transform: scale(1) translateY(0) } }

@@ -1,0 +1,33 @@
+# NexusOS Agent Sandbox Image
+# Build: docker build -t nexusos-agent:latest -f Dockerfile.agent .
+FROM node:20-slim
+
+# System tools agents commonly need
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    wget \
+    python3 \
+    python3-pip \
+    jq \
+    ripgrep \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Create non-root agent user for isolation
+RUN useradd -m -d /home/agent -s /bin/bash agent
+
+# Workspace directories
+RUN mkdir -p /workspace /workspaces/shared && \
+    chown -R agent:agent /workspace /workspaces
+
+USER agent
+WORKDIR /workspace
+
+# Smoke test
+RUN node --version && claude --version 2>/dev/null || true
+
+CMD ["/bin/bash"]

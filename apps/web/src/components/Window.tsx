@@ -6,17 +6,24 @@ import { X, Minus, Square } from 'lucide-react'
 import { AgentTeamApp } from './apps/AgentTeamApp'
 import { ChatApp } from './apps/ChatApp'
 import { CanvasApp } from './apps/CanvasApp'
+import { TasksApp } from './apps/TasksApp'
+import { SkillsApp } from './apps/SkillsApp'
+import { PromptsApp } from './apps/PromptsApp'
+import { TerminalApp } from './apps/TerminalApp'
+import { SettingsApp } from './apps/SettingsApp'
+import { WorkspaceApp } from './apps/WorkspaceApp'
 import { PlaceholderApp } from './apps/PlaceholderApp'
 
 const appComponents: Record<string, React.ComponentType> = {
   AgentTeam: AgentTeamApp,
   Chat: ChatApp,
   Canvas: CanvasApp,
-  Tasks: PlaceholderApp,
-  Terminal: PlaceholderApp,
-  Skills: PlaceholderApp,
-  Prompts: PlaceholderApp,
-  Settings: PlaceholderApp,
+  Tasks: TasksApp,
+  Terminal: TerminalApp,
+  Skills: SkillsApp,
+  Prompts: PromptsApp,
+  Settings: SettingsApp,
+  Workspace: WorkspaceApp,
 }
 
 interface WindowProps {
@@ -30,67 +37,68 @@ export function Window({ window }: WindowProps) {
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.window-controls')) return
-
     focusWindow(window.id)
     setIsDragging(true)
-    dragOffset.current = {
-      x: e.clientX - window.x,
-      y: e.clientY - window.y,
-    }
+    dragOffset.current = { x: e.clientX - window.x, y: e.clientY - window.y }
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging) return
-    updateWindowPosition(
-      window.id,
-      e.clientX - dragOffset.current.x,
-      e.clientY - dragOffset.current.y
-    )
+    updateWindowPosition(window.id, e.clientX - dragOffset.current.x, e.clientY - dragOffset.current.y)
   }
 
-  const handleMouseUp = () => {
-    setIsDragging(false)
-  }
+  const handleMouseUp = () => setIsDragging(false)
 
   const AppComponent = appComponents[window.component] || PlaceholderApp
 
   const style = window.isMaximized
-    ? { top: 0, left: 0, width: '100%', height: 'calc(100% - 80px)', zIndex: window.zIndex }
-    : { top: window.y, left: window.x, width: window.width, height: window.height, zIndex: window.zIndex }
+    ? { top: 36, left: 0, width: '100%', height: 'calc(100% - 36px - 76px)', zIndex: window.zIndex }
+    : { top: Math.max(36, window.y), left: window.x, width: window.width, height: window.height, zIndex: window.zIndex }
 
   return (
     <div
-      className="window absolute"
+      className="window"
       style={style}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onClick={() => focusWindow(window.id)}
     >
+      {/* Title bar */}
       <div className="window-titlebar" onMouseDown={handleMouseDown}>
-        <span className="text-white text-sm font-medium">{window.title}</span>
-        <div className="window-controls flex gap-2">
+        {/* Traffic lights — macOS style, left side */}
+        <div className="window-controls flex items-center gap-1.5">
           <button
-            className="w-6 h-6 rounded-full bg-yellow-500 hover:bg-yellow-400 flex items-center justify-center"
-            onClick={() => minimizeWindow(window.id)}
-          >
-            <Minus className="w-3 h-3 text-yellow-900" />
-          </button>
-          <button
-            className="w-6 h-6 rounded-full bg-green-500 hover:bg-green-400 flex items-center justify-center"
-            onClick={() => maximizeWindow(window.id)}
-          >
-            <Square className="w-3 h-3 text-green-900" />
-          </button>
-          <button
-            className="w-6 h-6 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center"
+            className="w-3 h-3 rounded-full bg-[#FF5F57] hover:brightness-110 flex items-center justify-center group transition-all"
             onClick={() => closeWindow(window.id)}
+            title="Close"
           >
-            <X className="w-3 h-3 text-red-900" />
+            <X className="w-2 h-2 text-[#991000] opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={2.5} />
+          </button>
+          <button
+            className="w-3 h-3 rounded-full bg-[#FEBC2E] hover:brightness-110 flex items-center justify-center group transition-all"
+            onClick={() => minimizeWindow(window.id)}
+            title="Minimize"
+          >
+            <Minus className="w-2 h-2 text-[#7D4700] opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={2.5} />
+          </button>
+          <button
+            className="w-3 h-3 rounded-full bg-[#28C840] hover:brightness-110 flex items-center justify-center group transition-all"
+            onClick={() => maximizeWindow(window.id)}
+            title="Maximize"
+          >
+            <Square className="w-2 h-2 text-[#006500] opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={2.5} />
           </button>
         </div>
+
+        {/* Window title — centered */}
+        <span className="absolute left-1/2 -translate-x-1/2 text-ink-2 text-xs font-medium select-none pointer-events-none">
+          {window.title}
+        </span>
       </div>
-      <div className="window-content h-[calc(100%-40px)]">
+
+      {/* Content */}
+      <div className="window-content" style={{ height: 'calc(100% - 40px)' }}>
         <AppComponent />
       </div>
     </div>
