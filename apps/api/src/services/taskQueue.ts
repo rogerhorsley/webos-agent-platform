@@ -3,6 +3,8 @@ import IORedis from 'ioredis'
 import { dbGetOne, dbUpdate } from '../db/index'
 import { streamChat } from './claude'
 import { execInWorkspace, runClaudeTask } from './sandbox'
+import { appendChildTasks, createChildTask, runTeamOrchestration } from './teamOrchestrator'
+import { agentMessageBus } from './messageBus'
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 
@@ -33,7 +35,7 @@ function getRedisConnection(): IORedis {
 export function getTaskQueue(): Queue {
   if (!taskQueue) {
     taskQueue = new Queue('tasks', {
-      connection: getRedisConnection(),
+      connection: getRedisConnection() as any,
       defaultJobOptions: {
         attempts: 2,
         backoff: { type: 'exponential', delay: 2000 },
@@ -68,8 +70,32 @@ export function startWorker(): Worker {
 
       try {
         let result: string
+        const childTaskIds: string[] = []
 
-        if (task.type === 'chat') {
+        if (task.teamId) {
+          const orchestration = await runTeamOrchestration({
+            task,
+            ioEmit: (event, payload) => emitTaskEvent(taskId, event, payload),
+          })
+          result = orchestration.result
+          emitTaskEvent(taskId, 'team:done', {
+            taskId,
+            teamId: task.teamId,
+            summary: orchestration.result.slice(0, 500),
+            mode: orchestration.mode,
+          })
+
+          // Persist team member execution snapshots as child tasks.
+          for (const step of orchestration.steps) {
+            const childId = createChildTask(task, {
+              name: `[${orchestration.mode}] ${step.agentName}`,
+              agentId: step.agentId,
+              teamId: task.teamId,
+              input: { prompt: task.input.prompt },
+            })
+            childTaskIds.push(childId)
+          }
+        } else if (task.type === 'chat') {
           // Use Claude via streaming
           const chunks: string[] = []
           await streamChat(
@@ -101,6 +127,9 @@ export function startWorker(): Worker {
         }
 
         // Complete
+        if (childTaskIds.length) {
+          appendChildTasks(taskId, childTaskIds)
+        }
         dbUpdate('tasks', taskId, {
           status: 'completed',
           output: { result, artifacts: [], logs: [] },
@@ -108,6 +137,7 @@ export function startWorker(): Worker {
           completedAt: new Date().toISOString(),
         })
         emitTaskEvent(taskId, 'task:status', { taskId, status: 'completed', progress: 100 })
+        agentMessageBus.clearContext(taskId)
 
       } catch (err: any) {
         dbUpdate('tasks', taskId, {
@@ -116,11 +146,12 @@ export function startWorker(): Worker {
           completedAt: new Date().toISOString(),
         })
         emitTaskEvent(taskId, 'task:status', { taskId, status: 'failed', error: err.message })
+        agentMessageBus.clearContext(taskId)
         throw err
       }
     },
     {
-      connection: getRedisConnection(),
+      connection: getRedisConnection() as any,
       concurrency: parseInt(process.env.WORKER_CONCURRENCY || '3'),
     }
   )

@@ -2,6 +2,24 @@ import { Desktop } from './components/Desktop'
 import { Dock } from './components/Dock'
 import { WindowManager } from './components/WindowManager'
 import { GlobalSearch } from './components/GlobalSearch'
+import { useToastStore } from './stores/toastStore'
+
+function ToastContainer() {
+  const toasts = useToastStore((s) => s.toasts)
+  return (
+    <>
+      {toasts.map((t, i) => (
+        <div
+          key={t.id}
+          className={`toast toast-${t.type}`}
+          style={{ bottom: `${80 + i * 44}px` }}
+        >
+          {t.message}
+        </div>
+      ))}
+    </>
+  )
+}
 
 function App() {
   return (
@@ -10,6 +28,7 @@ function App() {
       <WindowManager />
       <Dock />
       <GlobalSearch />
+      <ToastContainer />
     </div>
   )
 }

@@ -1,33 +1,100 @@
-# NexusOS Agent Sandbox Image
+# NexusOS Agent Sandbox Image — Full Toolchain
 # Build: docker build -t nexusos-agent:latest -f Dockerfile.agent .
 FROM node:20-slim
 
-# System tools agents commonly need
+# ── System tools ───────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    curl \
-    wget \
-    python3 \
-    python3-pip \
-    jq \
-    ripgrep \
-    ca-certificates \
+    # Core utilities
+    git curl wget ca-certificates gnupg lsb-release \
+    # Shell & text processing
+    bash zsh fish tmux screen \
+    jq yq ripgrep fd-find fzf bat \
+    sed gawk grep less \
+    # File management
+    tree zip unzip tar gzip bzip2 xz-utils \
+    # Network tools
+    openssh-client netcat-openbsd dnsutils iputils-ping \
+    # Build tools
+    build-essential make gcc g++ cmake \
+    # Python ecosystem
+    python3 python3-pip python3-venv python3-dev \
+    # Database clients
+    sqlite3 postgresql-client redis-tools \
+    # Editors
+    vim nano \
+    # System monitoring
+    htop procps \
+    # Image/PDF processing
+    imagemagick ghostscript \
+    # Misc
+    locales sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code CLI globally
-RUN npm install -g @anthropic-ai/claude-code
+# Set locale
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
-# Create non-root agent user for isolation
-RUN useradd -m -d /home/agent -s /bin/bash agent
+# ── Node.js global tools ──────────────────────────────────────────────────
+RUN npm install -g \
+    @anthropic-ai/claude-code \
+    typescript ts-node tsx \
+    eslint prettier \
+    nodemon pm2 \
+    http-server serve \
+    npm-check-updates \
+    vercel netlify-cli \
+    pnpm yarn \
+    2>/dev/null || true
 
-# Workspace directories
+# ── Python tools ──────────────────────────────────────────────────────────
+RUN pip3 install --break-system-packages --no-cache-dir \
+    requests httpx beautifulsoup4 lxml \
+    pandas numpy matplotlib seaborn \
+    jupyter notebook \
+    flask fastapi uvicorn \
+    pytest black ruff mypy \
+    pyyaml toml \
+    Pillow \
+    openai anthropic \
+    2>/dev/null || true
+
+# ── Go (for some CLI tools) ──────────────────────────────────────────────
+RUN curl -fsSL https://go.dev/dl/go1.22.5.linux-$(dpkg --print-architecture).tar.gz | tar -C /usr/local -xzf - 2>/dev/null || true
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# ── Rust (for some CLI tools) ────────────────────────────────────────────
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y 2>/dev/null || true
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# ── Docker CLI (for agents that need to build/run containers) ─────────────
+RUN curl -fsSL https://get.docker.com | sh 2>/dev/null || true
+
+# ── Create non-root agent user ────────────────────────────────────────────
+RUN useradd -m -d /home/agent -s /bin/bash agent && \
+    echo "agent ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# ── Workspace directories ────────────────────────────────────────────────
 RUN mkdir -p /workspace /workspaces/shared && \
-    chown -R agent:agent /workspace /workspaces
+    chown -R agent:agent /workspace /workspaces /home/agent
+
+# ── Copy Rust/Go to agent user ───────────────────────────────────────────
+RUN cp -r /root/.cargo /home/agent/.cargo 2>/dev/null || true && \
+    chown -R agent:agent /home/agent/.cargo 2>/dev/null || true
 
 USER agent
 WORKDIR /workspace
 
-# Smoke test
-RUN node --version && claude --version 2>/dev/null || true
+ENV TERM=xterm-256color
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV PATH="/home/agent/.cargo/bin:/usr/local/go/bin:${PATH}"
+
+# ── Shell config ─────────────────────────────────────────────────────────
+RUN echo 'export PS1="\[\033[36m\]nexus-agent\[\033[0m\]:\[\033[33m\]\w\[\033[0m\]$ "' >> /home/agent/.bashrc && \
+    echo 'alias ll="ls -la"' >> /home/agent/.bashrc && \
+    echo 'alias la="ls -A"' >> /home/agent/.bashrc
+
+# ── Smoke test ───────────────────────────────────────────────────────────
+RUN node --version && python3 --version && git --version && \
+    claude --version 2>/dev/null || echo "claude cli not available"
 
 CMD ["/bin/bash"]

@@ -25,7 +25,7 @@ const APP_ENTRIES = Object.entries(APP_MAP).map(([title, { component, icon }]) =
   component, icon,
 }))
 
-const TYPE_ICONS: Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>> = {
+const TYPE_ICONS: Record<string, React.ComponentType<any>> = {
   agent: Bot, task: ListTodo, prompt: FileText, skill: Puzzle, app: Command, workspace: FolderOpen,
 }
 
@@ -38,7 +38,7 @@ export function GlobalSearch() {
   const { data: agents = [] } = useAgents()
   const { data: tasks = [] } = useTasks()
   const { data: prompts = [] } = usePrompts()
-  const { data: skills = [] } = useSkills()
+  const { data: _skills = [] } = useSkills()
 
   const buildResults = useCallback((): SearchResult[] => {
     const q = query.toLowerCase()

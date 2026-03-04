@@ -31,7 +31,7 @@ interface WindowState {
 export const useWindowStore = create<WindowState>((set, get) => ({
   windows: [],
   activeWindowId: null,
-  nextZIndex: 1,
+  nextZIndex: 100,
 
   openWindow: (app) => {
     const { windows, nextZIndex } = get()
@@ -100,12 +100,17 @@ export const useWindowStore = create<WindowState>((set, get) => ({
 
   focusWindow: (id) => {
     const { windows, nextZIndex } = get()
+    // Normalize z-indices if approaching the reserved range (< 9000)
+    const safeNext = nextZIndex >= 8000 ? 100 : nextZIndex
+    const safeWindows = nextZIndex >= 8000
+      ? windows.map((w, i) => ({ ...w, zIndex: i + 1 }))
+      : windows
     set({
-      windows: windows.map(w =>
-        w.id === id ? { ...w, zIndex: nextZIndex } : w
+      windows: safeWindows.map(w =>
+        w.id === id ? { ...w, zIndex: safeNext } : w
       ),
       activeWindowId: id,
-      nextZIndex: nextZIndex + 1,
+      nextZIndex: safeNext + 1,
     })
   },
 

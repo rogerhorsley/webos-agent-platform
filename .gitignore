@@ -39,3 +39,4 @@ apps/api/workspaces/*/
 !apps/api/workspaces/shared/
 logs/
 .env.production
+docker-certs/

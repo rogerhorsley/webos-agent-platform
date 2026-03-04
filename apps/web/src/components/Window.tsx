@@ -12,6 +12,7 @@ import { PromptsApp } from './apps/PromptsApp'
 import { TerminalApp } from './apps/TerminalApp'
 import { SettingsApp } from './apps/SettingsApp'
 import { WorkspaceApp } from './apps/WorkspaceApp'
+import { ChannelsApp } from './apps/ChannelsApp'
 import { PlaceholderApp } from './apps/PlaceholderApp'
 
 const appComponents: Record<string, React.ComponentType> = {
@@ -24,6 +25,7 @@ const appComponents: Record<string, React.ComponentType> = {
   Prompts: PromptsApp,
   Settings: SettingsApp,
   Workspace: WorkspaceApp,
+  Channels: ChannelsApp,
 }
 
 interface WindowProps {
@@ -51,9 +53,12 @@ export function Window({ window }: WindowProps) {
 
   const AppComponent = appComponents[window.component] || PlaceholderApp
 
+  const STATUSBAR_H = 36
+  const DOCK_H = 64  // padding-top(8) + item(44) + padding-bottom(12)
+
   const style = window.isMaximized
-    ? { top: 36, left: 0, width: '100%', height: 'calc(100% - 36px - 76px)', zIndex: window.zIndex }
-    : { top: Math.max(36, window.y), left: window.x, width: window.width, height: window.height, zIndex: window.zIndex }
+    ? { top: STATUSBAR_H, left: 0, width: '100%', height: `calc(100% - ${STATUSBAR_H}px - ${DOCK_H}px)`, zIndex: window.zIndex }
+    : { top: Math.max(STATUSBAR_H, window.y), left: window.x, width: window.width, height: window.height, zIndex: window.zIndex }
 
   return (
     <div

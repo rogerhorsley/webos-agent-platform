@@ -20,6 +20,21 @@ export const agentsApi = {
   create: (body: any) => request<any>('/api/agents', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: string, body: any) => request<any>(`/api/agents/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (id: string) => request<void>(`/api/agents/${id}`, { method: 'DELETE' }),
+  listTemplates: () => request<any[]>('/api/agents/templates'),
+  installTemplate: (slug: string) => request<any>(`/api/agents/templates/${slug}/install`, { method: 'POST' }),
+}
+
+// Sandbox
+export const sandboxApi = {
+  status: () => request<any>('/api/sandbox/status'),
+  containers: () => request<any[]>('/api/sandbox/containers'),
+  containerInfo: (agentId: string) => request<any>(`/api/sandbox/containers/${agentId}`),
+  start: (agentId: string) => request<any>(`/api/sandbox/containers/${agentId}/start`, { method: 'POST' }),
+  stop: (agentId: string) => request<any>(`/api/sandbox/containers/${agentId}/stop`, { method: 'POST' }),
+  restart: (agentId: string) => request<any>(`/api/sandbox/containers/${agentId}/restart`, { method: 'POST' }),
+  remove: (agentId: string) => request<void>(`/api/sandbox/containers/${agentId}`, { method: 'DELETE' }),
+  exec: (agentId: string, command: string, timeout?: number) =>
+    request<any>(`/api/sandbox/containers/${agentId}/exec`, { method: 'POST', body: JSON.stringify({ command, timeout }) }),
 }
 
 // Tasks
@@ -32,12 +47,28 @@ export const tasksApi = {
   delete: (id: string) => request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
 }
 
+// Teams
+export const teamsApi = {
+  list: () => request<any[]>('/api/teams'),
+  get: (id: string) => request<any>(`/api/teams/${id}`),
+  create: (body: any) => request<any>('/api/teams', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: any) => request<any>(`/api/teams/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: (id: string) => request<void>(`/api/teams/${id}`, { method: 'DELETE' }),
+  run: (id: string, body: { prompt: string; name?: string; priority?: string }) =>
+    request<any>(`/api/teams/${id}/run`, { method: 'POST', body: JSON.stringify(body) }),
+}
+
 // Skills
 export const skillsApi = {
   list: () => request<any[]>('/api/skills'),
   get: (slug: string) => request<any>(`/api/skills/${slug}`),
   install: (slug: string) => request<any>(`/api/skills/${slug}/install`, { method: 'POST' }),
   uninstall: (slug: string) => request<void>(`/api/skills/${slug}`, { method: 'DELETE' }),
+  listChains: () => request<any[]>('/api/skills/chains'),
+  createChain: (body: any) => request<any>('/api/skills/chains', { method: 'POST', body: JSON.stringify(body) }),
+  deleteChain: (id: string) => request<void>(`/api/skills/chains/${id}`, { method: 'DELETE' }),
+  runChain: (id: string, input: string) =>
+    request<any>(`/api/skills/chains/${id}/run`, { method: 'POST', body: JSON.stringify({ input }) }),
 }
 
 // Prompts
@@ -61,7 +92,34 @@ export const workflowsApi = {
   create: (body: any) => request<any>('/api/workflows', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: string, body: any) => request<any>(`/api/workflows/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (id: string) => request<void>(`/api/workflows/${id}`, { method: 'DELETE' }),
-  run: (id: string) => request<any>(`/api/workflows/${id}/run`, { method: 'POST' }),
+  run: (id: string, body?: any) => request<any>(`/api/workflows/${id}/run`, { method: 'POST', body: JSON.stringify(body || {}) }),
+}
+
+// Channels
+export const channelsApi = {
+  list: () => request<any[]>('/api/channels'),
+  get: (id: string) => request<any>(`/api/channels/${id}`),
+  create: (body: any) => request<any>('/api/channels', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: any) => request<any>(`/api/channels/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: (id: string) => request<void>(`/api/channels/${id}`, { method: 'DELETE' }),
+  connect: (id: string) => request<any>(`/api/channels/${id}/connect`, { method: 'POST' }),
+  disconnect: (id: string) => request<any>(`/api/channels/${id}/disconnect`, { method: 'POST' }),
+  send: (id: string, chatId: string, text: string) =>
+    request<any>(`/api/channels/${id}/send`, { method: 'POST', body: JSON.stringify({ chatId, text }) }),
+  messages: (id: string, chatId?: string) =>
+    request<any[]>(`/api/channels/${id}/messages${chatId ? `?chatId=${chatId}` : ''}`),
+  stats: () => request<any>('/api/channels/stats'),
+}
+
+// Scheduled Tasks
+export const scheduledTasksApi = {
+  list: () => request<any[]>('/api/scheduled-tasks'),
+  get: (id: string) => request<any>(`/api/scheduled-tasks/${id}`),
+  create: (body: any) => request<any>('/api/scheduled-tasks', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: any) => request<any>(`/api/scheduled-tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  pause: (id: string) => request<any>(`/api/scheduled-tasks/${id}/pause`, { method: 'POST' }),
+  resume: (id: string) => request<any>(`/api/scheduled-tasks/${id}/resume`, { method: 'POST' }),
+  delete: (id: string) => request<void>(`/api/scheduled-tasks/${id}`, { method: 'DELETE' }),
 }
 
 // MCP

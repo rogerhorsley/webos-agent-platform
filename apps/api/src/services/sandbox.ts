@@ -27,7 +27,7 @@ export interface ClaudeTaskResult {
 
 /**
  * Execute a shell command in an agent's workspace.
- * When Docker is available (SANDBOX_MODE=docker), runs inside a container.
+ * When Docker is available (SANDBOX_MODE=docker), uses containerManager.
  * Otherwise runs as a restricted host process with workspace as cwd.
  */
 export async function execInWorkspace(
@@ -36,28 +36,47 @@ export async function execInWorkspace(
   options: ExecOptions = {}
 ): Promise<ExecResult> {
   const { timeout = 30_000, env = {}, maxBuffer = 5 * 1024 * 1024 } = options
-  const wsPath = agentId === 'shared' ? path.join(WORKSPACES_ROOT, 'shared') : getWorkspacePath(agentId)
 
   if (DOCKER_AVAILABLE) {
-    return execInDocker(agentId, wsPath, command, { timeout, env, maxBuffer })
+    const { execInContainer, createContainer } = await import('./containerManager')
+    await createContainer(agentId)
+    const start = Date.now()
+    const result = await execInContainer(agentId, command, { timeout, env })
+    return { ...result, duration: Date.now() - start }
   }
 
+  const wsPath = agentId === 'shared' ? path.join(WORKSPACES_ROOT, 'shared') : getWorkspacePath(agentId)
   return execInProcess(wsPath, command, { timeout, env, maxBuffer })
 }
 
 /**
  * Run a Claude Code task in an agent's workspace.
- * Uses `claude --print "<task>"` for non-interactive execution.
+ * In Docker mode, runs inside the container. Otherwise uses host process.
  */
 export async function runClaudeTask(
   agentId: string,
   task: string,
   options: ExecOptions = {}
 ): Promise<ClaudeTaskResult> {
-  const wsPath = getWorkspacePath(agentId)
   const claudeBin = CLAUDE_BIN
-
   const command = `${claudeBin} --print ${JSON.stringify(task)}`
+
+  if (DOCKER_AVAILABLE) {
+    const { execInContainer, createContainer } = await import('./containerManager')
+    await createContainer(agentId)
+    const start = Date.now()
+    const result = await execInContainer(agentId, command, {
+      timeout: options.timeout || 120_000,
+      env: { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '', AGENT_ID: agentId, ...options.env },
+    })
+    return {
+      output: result.stdout + (result.stderr ? `\nSTDERR: ${result.stderr}` : ''),
+      exitCode: result.exitCode,
+      duration: Date.now() - start,
+    }
+  }
+
+  const wsPath = getWorkspacePath(agentId)
   const result = await execInProcess(wsPath, command, {
     timeout: options.timeout || 120_000,
     env: {

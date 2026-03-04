@@ -16,6 +16,16 @@ import { setupTerminalSocket } from './routes/terminal'
 import { workspaceRoutes } from './routes/workspaces'
 import { ensureWorkspacesRoot } from './services/workspace'
 import { startWorker, setSocketIO, getQueueStats, closeQueue } from './services/taskQueue'
+import { teamRoutes } from './routes/teams'
+import { sandboxRoutes } from './routes/sandbox'
+import { handleNexusCoreChat, NEXUS_CORE_ID } from './services/nexusCore'
+import { setMessageBusIO } from './services/messageBus'
+import { channelRoutes } from './routes/channels'
+import { scheduledTaskRoutes } from './routes/scheduledTasks'
+import './channels/index'
+import { setChannelManagerIO, restoreChannels } from './services/channelManager'
+import { startScheduler, setSchedulerIO } from './services/taskScheduler'
+import { startAutonomyLoop, setAutonomyIO } from './services/agentAutonomy'
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
 const HOST = process.env.HOST || '0.0.0.0'
@@ -44,35 +54,92 @@ async function main() {
   io.on('connection', (socket) => {
     fastify.log.info(`Client connected: ${socket.id}`)
 
+    // One AbortController per active chat stream on this socket
+    let activeAbort: AbortController | null = null
+
     socket.on('chat:message', async (data: {
       agentId?: string
       messages: Array<{ role: 'user' | 'assistant'; content: string }>
       systemPrompt?: string
       model?: string
+      dispatchMode?: 'auto' | 'confirm'
     }) => {
+      if (!data || !Array.isArray(data.messages) || data.messages.length === 0) {
+        socket.emit('chat:error', { error: 'Invalid chat:message payload — messages array required' })
+        return
+      }
+
+      activeAbort?.abort()
+      activeAbort = new AbortController()
+      const { signal } = activeAbort
+      const targetAgentId = data.agentId || NEXUS_CORE_ID
+
       try {
-        await streamChat(
-          data.messages,
-          data.systemPrompt,
-          data.model,
-          {
-            onToken: (token) => {
-              socket.emit('chat:token', { agentId: data.agentId, token })
+        if (targetAgentId === NEXUS_CORE_ID) {
+          const { content, dispatch } = await handleNexusCoreChat({
+            messages: data.messages,
+            model: data.model,
+            dispatchMode: data.dispatchMode || 'auto',
+            callbacks: {
+              onToken: (token) => {
+                socket.emit('chat:token', { agentId: targetAgentId, token })
+              },
+              onDone: () => {},
+              onError: (err) => {
+                socket.emit('chat:error', { agentId: targetAgentId, error: err.message })
+              },
             },
-            onDone: (fullText) => {
-              socket.emit('chat:done', { agentId: data.agentId, content: fullText })
+            signal,
+          })
+          activeAbort = null
+          socket.emit('chat:done', {
+            agentId: targetAgentId,
+            content,
+            dispatch,
+          })
+        } else {
+          await streamChat(
+            data.messages,
+            data.systemPrompt,
+            data.model,
+            {
+              onToken: (token) => {
+                socket.emit('chat:token', { agentId: targetAgentId, token })
+              },
+              onDone: (fullText) => {
+                activeAbort = null
+                socket.emit('chat:done', { agentId: targetAgentId, content: fullText })
+              },
+              onError: (err) => {
+                activeAbort = null
+                socket.emit('chat:error', { agentId: targetAgentId, error: err.message })
+              },
             },
-            onError: (err) => {
-              socket.emit('chat:error', { agentId: data.agentId, error: err.message })
-            },
-          }
-        )
+            signal
+          )
+        }
       } catch (err: any) {
-        socket.emit('chat:error', { agentId: data.agentId, error: err.message })
+        if (!signal.aborted) {
+          socket.emit('chat:error', { agentId: targetAgentId, error: err.message })
+        }
+        activeAbort = null
+      }
+    })
+
+    socket.on('chat:stop', () => {
+      if (activeAbort) {
+        activeAbort.abort()
+        activeAbort = null
+        // Notify client that the stream was stopped
+        socket.emit('chat:stopped')
       }
     })
 
     socket.on('task:subscribe', (data) => {
+      socket.join(`task:${data.taskId}`)
+    })
+
+    socket.on('team:subscribe', (data) => {
       socket.join(`task:${data.taskId}`)
     })
 
@@ -87,12 +154,16 @@ async function main() {
   // Decorate fastify with io
   fastify.decorate('io', io)
 
-  // Start task worker
+  // Start task worker + subsystems
   setSocketIO(io)
+  setMessageBusIO(io)
+  setChannelManagerIO(io)
+  setSchedulerIO(io)
+  setAutonomyIO(io)
   try {
     startWorker()
   } catch (err) {
-    fastify.log.warn('Task worker failed to start (Redis may be unavailable):', err)
+    fastify.log.warn(`Task worker failed to start (Redis may be unavailable): ${String(err)}`)
   }
 
   // Health check
@@ -109,6 +180,10 @@ async function main() {
   fastify.register(skillRoutes, { prefix: '/api/skills' })
   fastify.register(promptRoutes, { prefix: '/api/prompts' })
   fastify.register(workflowRoutes, { prefix: '/api/workflows' })
+  fastify.register(teamRoutes, { prefix: '/api/teams' })
+  fastify.register(sandboxRoutes, { prefix: '/api/sandbox' })
+  fastify.register(channelRoutes, { prefix: '/api/channels' })
+  fastify.register(scheduledTaskRoutes, { prefix: '/api/scheduled-tasks' })
   fastify.register(workspaceRoutes, { prefix: '/api/workspaces' })
 
   // Serve built frontend (production mode)
@@ -144,6 +219,12 @@ async function main() {
   try {
     await fastify.listen({ port: PORT, host: HOST })
     fastify.log.info(`Server running at http://${HOST}:${PORT}`)
+
+    // Start subsystems after server is listening
+    restoreChannels().catch(err => fastify.log.warn(`Channel restore failed: ${err}`))
+    startScheduler()
+    startAutonomyLoop()
+
     if (isProduction && existsSync(webDistPath)) {
       fastify.log.info(`Frontend available at http://${HOST}:${PORT}`)
     }

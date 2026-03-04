@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Search, Command } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { NotificationCenter } from './NotificationCenter'
+import { DesktopWidgets } from './DesktopWidgets'
+import { useWallpaperStore } from '../stores/wallpaperStore'
 
 function Clock() {
   const [time, setTime] = useState(new Date())
@@ -16,12 +18,16 @@ function Clock() {
 }
 
 export function Desktop() {
+  const wallpaper = useWallpaperStore(s => s.getActive())
   const triggerSearch = () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))
   }
 
   return (
-    <div className="absolute inset-0 bg-desktop-bg overflow-hidden">
+    <div
+      className="absolute inset-0 overflow-hidden transition-all duration-700"
+      style={{ background: wallpaper.css }}
+    >
       {/* Subtle dot grid */}
       <div
         className="absolute inset-0 opacity-[0.025]"
@@ -32,11 +38,12 @@ export function Desktop() {
       />
 
       {/* System bar */}
-      <div className="absolute top-0 left-0 right-0 h-9 z-10 flex items-center px-4"
+      <div className="absolute top-0 left-0 right-0 h-9 flex items-center px-4"
         style={{
           background: 'rgba(12,12,14,0.85)',
           backdropFilter: 'blur(20px)',
           borderBottom: '1px solid rgba(255,255,255,0.05)',
+          zIndex: 9000,
         }}
       >
         {/* Left — brand */}
@@ -47,25 +54,23 @@ export function Desktop() {
           <span className="text-ink-3 text-xs font-medium">NexusOS</span>
         </div>
 
-        {/* Center — search trigger */}
-        <button
-          onClick={triggerSearch}
-          className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-ink-4 hover:text-ink-2 transition-colors"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-        >
-          <Search className="w-3 h-3" />
-          <span>搜索</span>
-          <kbd className="ml-1 px-1 py-0.5 rounded text-[10px]" style={{ background: 'rgba(255,255,255,0.08)' }}>
-            ⌘K
-          </kbd>
-        </button>
+        {/* Center — removed, search moved to right side */}
 
-        {/* Right — notifications + clock */}
-        <div className="ml-auto flex items-center gap-3">
+        {/* Right — search + notifications + clock */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={triggerSearch}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-4 hover:text-ink-2 hover:bg-white/[0.06] transition-colors"
+            title="搜索 (⌘K)"
+          >
+            <Search className="w-3.5 h-3.5" />
+          </button>
           <NotificationCenter />
           <Clock />
         </div>
       </div>
+      {/* Desktop Widgets */}
+      <DesktopWidgets />
     </div>
   )
 }

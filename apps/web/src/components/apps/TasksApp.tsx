@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Plus, X, Play, StopCircle, Trash2, AlertCircle, Loader2, Clock, CheckCircle2, CircleDot, Circle } from 'lucide-react'
+import { Plus, X, Play, StopCircle, Trash2, AlertCircle, Loader2, Clock, CheckCircle2, CircleDot, Circle, Users } from 'lucide-react'
 import { useTasks, useCreateTask, useStartTask, useCancelTask, useDeleteTask } from '../../hooks/useTasks'
 import { useAgents } from '../../hooks/useAgents'
 import { getSocket } from '../../lib/socket'
+import { useTeams } from '../../hooks/useTeams'
 
 const PRIORITY_STYLES: Record<string, string> = {
   urgent: 'text-state-error bg-state-error/10 border-state-error/25',
@@ -17,7 +18,7 @@ const COLUMNS = [
   { key: 'completed', label: 'Done',     Icon: CheckCircle2, color: 'text-state-success' },
 ]
 
-function TaskCard({ task, onStart, onCancel, onDelete }: any) {
+function TaskCard({ task, onStart, onCancel, onDelete, onOpenTeamRun }: any) {
   const [progress, setProgress] = useState(task.progress?.current ?? 0)
   useEffect(() => {
     const socket = getSocket()
@@ -39,6 +40,14 @@ function TaskCard({ task, onStart, onCancel, onDelete }: any) {
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className={`badge ${PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium}`}>{task.priority}</span>
         <span className="badge text-ink-4 bg-white/5 border-white/10">{task.type}</span>
+        {task.teamId ? (
+          <button
+            onClick={() => onOpenTeamRun?.(task)}
+            className="badge text-purple-300 bg-purple-500/10 border-purple-500/25 hover:bg-purple-500/15"
+          >
+            <Users className="w-3 h-3" /> Team
+          </button>
+        ) : null}
       </div>
 
       {task.status === 'running' && (
@@ -72,8 +81,16 @@ function TaskCard({ task, onStart, onCancel, onDelete }: any) {
   )
 }
 
-function CreateTaskModal({ agents, onClose, onSave, saving }: any) {
-  const [form, setForm] = useState({ name: '', description: '', type: 'chat', priority: 'medium', agentId: '', input: { prompt: '' } })
+function CreateTaskModal({ agents, teams, onClose, onSave, saving }: any) {
+  const [form, setForm] = useState({
+    name: '',
+    description: '',
+    type: 'chat',
+    priority: 'medium',
+    agentId: '',
+    teamId: '',
+    input: { prompt: '' },
+  })
   const set = (key: string, val: any) => setForm(f => ({ ...f, [key]: val }))
 
   return (
@@ -92,7 +109,7 @@ function CreateTaskModal({ agents, onClose, onSave, saving }: any) {
             <label className="text-ink-3 text-xs mb-1.5 block">Instructions</label>
             <textarea value={form.input.prompt} onChange={e => setForm(f => ({ ...f, input: { prompt: e.target.value } }))} placeholder="Describe what the agent should do…" rows={3} className="app-input resize-none" />
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {[['Type','type',['chat','workflow','batch']],['Priority','priority',['low','medium','high','urgent']]].map(([label, key, opts]) => (
               <div key={String(key)}>
                 <label className="text-ink-3 text-xs mb-1.5 block">{String(label)}</label>
@@ -103,16 +120,41 @@ function CreateTaskModal({ agents, onClose, onSave, saving }: any) {
             ))}
             <div>
               <label className="text-ink-3 text-xs mb-1.5 block">Agent</label>
-              <select value={form.agentId} onChange={e => set('agentId', e.target.value)} className="app-input appearance-none w-full">
+              <select
+                value={form.agentId}
+                onChange={e => setForm(f => ({ ...f, agentId: e.target.value, teamId: e.target.value ? '' : f.teamId }))}
+                className="app-input appearance-none w-full"
+                disabled={!!form.teamId}
+              >
                 <option value="">None</option>
                 {agents.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-ink-3 text-xs mb-1.5 block">Team</label>
+              <select
+                value={form.teamId}
+                onChange={e => setForm(f => ({ ...f, teamId: e.target.value, agentId: e.target.value ? '' : f.agentId }))}
+                className="app-input appearance-none w-full"
+                disabled={!!form.agentId}
+              >
+                <option value="">None</option>
+                {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
           </div>
         </div>
         <div className="flex gap-2 mt-5">
           <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-          <button onClick={() => onSave({ ...form, agentId: form.agentId || undefined })} disabled={!form.name.trim() || !form.input.prompt.trim() || saving} className="btn-primary flex-1">
+          <button
+            onClick={() => onSave({
+              ...form,
+              agentId: form.agentId || undefined,
+              teamId: form.teamId || undefined,
+            })}
+            disabled={!form.name.trim() || !form.input.prompt.trim() || saving}
+            className="btn-primary flex-1"
+          >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
             {saving ? 'Creating…' : 'Create Task'}
           </button>
@@ -122,14 +164,91 @@ function CreateTaskModal({ agents, onClose, onSave, saving }: any) {
   )
 }
 
+function TeamRunPanel({ taskId, teamId, onClose }: { taskId: string; teamId: string; onClose: () => void }) {
+  const [progress, setProgress] = useState<any>(null)
+  const [steps, setSteps] = useState<any[]>([])
+  const [done, setDone] = useState<any>(null)
+
+  useEffect(() => {
+    const socket = getSocket()
+    socket.emit('team:subscribe', { taskId })
+
+    const onProgress = (data: any) => {
+      if (data.taskId !== taskId) return
+      setProgress(data)
+    }
+    const onStep = (data: any) => {
+      if (data.taskId !== taskId) return
+      setSteps(prev => [data, ...prev].slice(0, 30))
+    }
+    const onDone = (data: any) => {
+      if (data.taskId !== taskId) return
+      setDone(data)
+    }
+
+    socket.on('team:progress', onProgress)
+    socket.on('team:step', onStep)
+    socket.on('team:done', onDone)
+    return () => {
+      socket.off('team:progress', onProgress)
+      socket.off('team:step', onStep)
+      socket.off('team:done', onDone)
+    }
+  }, [taskId])
+
+  return (
+    <div className="app-card h-full flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-ink-2 text-xs font-semibold">Team Run</h3>
+          <p className="text-[11px] text-ink-4 font-mono">task: {taskId.slice(0, 8)} · team: {teamId.slice(0, 8)}</p>
+        </div>
+        <button onClick={onClose} className="p-1 hover:bg-white/5 rounded"><X className="w-3.5 h-3.5 text-ink-4" /></button>
+      </div>
+
+      {progress && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px] text-ink-3">
+            <span>{progress.mode || 'team'} · {progress.status}</span>
+            <span>{progress.step || 0}/{progress.totalSteps || 0}</span>
+          </div>
+          <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <div className="h-full bg-desktop-accent transition-all" style={{ width: `${Math.round(((progress.step || 0) / Math.max(progress.totalSteps || 1, 1)) * 100)}%` }} />
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-auto space-y-2">
+        {steps.map((s, idx) => (
+          <div key={`${s.agentId}-${s.step}-${idx}`} className="px-2.5 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-ink-2">{s.agentName}</span>
+              <span className="text-[10px] text-ink-4">{s.status}</span>
+            </div>
+            <div className="text-[10px] text-ink-4">step {s.step}/{s.totalSteps}</div>
+          </div>
+        ))}
+      </div>
+
+      {done?.summary && (
+        <div className="text-[11px] text-ink-3 p-2 rounded" style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>
+          {done.summary}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function TasksApp() {
   const { data: tasks = [], isLoading, error } = useTasks()
   const { data: agents = [] } = useAgents()
+  const { data: teams = [] } = useTeams()
   const createTask = useCreateTask()
   const startTask = useStartTask()
   const cancelTask = useCancelTask()
   const deleteTask = useDeleteTask()
   const [showModal, setShowModal] = useState(false)
+  const [teamRunTask, setTeamRunTask] = useState<any | null>(null)
 
   const grouped = COLUMNS.reduce((acc, col) => {
     acc[col.key] = tasks.filter((t: any) => col.key === 'completed' ? ['completed','failed','cancelled'].includes(t.status) : t.status === col.key)
@@ -155,7 +274,7 @@ export function TasksApp() {
       )}
 
       {!isLoading && (
-        <div className="flex-1 overflow-hidden grid grid-cols-3 gap-3 min-h-0">
+        <div className="flex-1 overflow-hidden grid grid-cols-4 gap-3 min-h-0">
           {COLUMNS.map(({ key, label, Icon, color }) => {
             const items = grouped[key] || []
             return (
@@ -171,6 +290,7 @@ export function TasksApp() {
                       onStart={(id: string) => startTask.mutate(id)}
                       onCancel={(id: string) => cancelTask.mutate(id)}
                       onDelete={(id: string) => deleteTask.mutate(id)}
+                      onOpenTeamRun={(t: any) => setTeamRunTask(t)}
                     />
                   ))}
                   {items.length === 0 && <div className="text-center text-ink-disabled text-xs py-5">Empty</div>}
@@ -178,11 +298,24 @@ export function TasksApp() {
               </div>
             )
           })}
+          <div className="min-h-0">
+            {teamRunTask?.teamId ? (
+              <TeamRunPanel
+                taskId={teamRunTask.id}
+                teamId={teamRunTask.teamId}
+                onClose={() => setTeamRunTask(null)}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center text-ink-4 text-xs border border-white/10 rounded-xl">
+                选择 Team 任务查看协作时间线
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {showModal && (
-        <CreateTaskModal agents={agents} onClose={() => setShowModal(false)}
+        <CreateTaskModal agents={agents} teams={teams} onClose={() => setShowModal(false)}
           onSave={async (d: any) => { await createTask.mutateAsync(d); setShowModal(false) }}
           saving={createTask.isPending}
         />

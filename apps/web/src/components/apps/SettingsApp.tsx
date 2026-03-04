@@ -1,26 +1,83 @@
 import { useState } from 'react'
-import { Save, Eye, EyeOff, CheckCircle, Key, Info } from 'lucide-react'
+import { Save, Eye, EyeOff, CheckCircle, Key, Info, ImageIcon } from 'lucide-react'
+import { useWallpaperStore, WALLPAPERS } from '../../stores/wallpaperStore'
 
 export function SettingsApp() {
   const [apiKey, setApiKey] = useState(localStorage.getItem('anthropic_api_key') || '')
   const [showKey, setShowKey] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [dispatchMode, setDispatchMode] = useState(localStorage.getItem('nexus_dispatch_mode') || 'auto')
+
+  const { activeId, setWallpaper } = useWallpaperStore()
 
   const handleSave = () => {
     localStorage.setItem('anthropic_api_key', apiKey)
+    localStorage.setItem('nexus_dispatch_mode', dispatchMode)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
   return (
     <div className="h-full overflow-auto">
-      <div className="max-w-md mx-auto space-y-5 py-1">
+      <div className="max-w-lg mx-auto space-y-5 py-1">
         <div>
           <h2 className="text-ink-1 text-sm font-semibold">Settings</h2>
           <p className="text-ink-3 text-xs mt-0.5">Configure NexusOS preferences</p>
         </div>
 
-        {/* API Keys */}
+        {/* ── Wallpaper ── */}
+        <section className="space-y-2.5">
+          <div className="flex items-center gap-2 mb-3">
+            <ImageIcon className="w-3.5 h-3.5 text-desktop-accent" strokeWidth={1.75} />
+            <span className="text-ink-2 text-xs font-medium">桌面壁纸</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2.5">
+            {WALLPAPERS.map(wp => {
+              const isActive = wp.id === activeId
+              return (
+                <button
+                  key={wp.id}
+                  onClick={() => setWallpaper(wp.id)}
+                  className="group relative rounded-xl overflow-hidden transition-all"
+                  style={{
+                    aspectRatio: '16/9',
+                    background: wp.preview,
+                    border: isActive
+                      ? '2px solid #E84C6A'
+                      : '2px solid rgba(255,255,255,0.06)',
+                    boxShadow: isActive ? '0 0 0 1px rgba(232,76,106,0.3), 0 4px 16px rgba(0,0,0,0.4)' : '0 2px 8px rgba(0,0,0,0.3)',
+                  }}
+                >
+                  {/* Dot grid overlay preview */}
+                  <div
+                    className="absolute inset-0 opacity-[0.04]"
+                    style={{
+                      backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)',
+                      backgroundSize: '8px 8px',
+                    }}
+                  />
+                  {/* Name label */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 px-2 py-1.5 text-center"
+                    style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+                  >
+                    <span className="text-[10px] font-medium text-white/80">{wp.name}</span>
+                  </div>
+                  {/* Active checkmark */}
+                  {isActive && (
+                    <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-[#E84C6A] flex items-center justify-center">
+                      <CheckCircle className="w-3 h-3 text-white" />
+                    </div>
+                  )}
+                  {/* Hover highlight */}
+                  <div className="absolute inset-0 bg-white/0 group-hover:bg-white/[0.05] transition-colors" />
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* ── API Keys ── */}
         <section className="space-y-2.5">
           <div className="flex items-center gap-2 mb-3">
             <Key className="w-3.5 h-3.5 text-desktop-accent" strokeWidth={1.75} />
@@ -53,7 +110,44 @@ export function SettingsApp() {
           </div>
         </section>
 
-        {/* About */}
+        {/* ── NexusCore Dispatch ── */}
+        <section className="space-y-2.5">
+          <div className="flex items-center gap-2 mb-3">
+            <ImageIcon className="w-3.5 h-3.5 text-desktop-accent" strokeWidth={1.75} />
+            <span className="text-ink-2 text-xs font-medium">NexusCore 派活模式</span>
+          </div>
+          <div className="app-card">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setDispatchMode('auto')}
+                className="px-3 py-2 rounded-lg text-xs transition-colors"
+                style={{
+                  background: dispatchMode === 'auto' ? 'rgba(74,222,128,0.12)' : 'rgba(255,255,255,0.04)',
+                  border: dispatchMode === 'auto' ? '1px solid rgba(74,222,128,0.25)' : '1px solid rgba(255,255,255,0.08)',
+                  color: dispatchMode === 'auto' ? '#86efac' : 'rgba(161,161,170,1)',
+                }}
+              >
+                自动执行
+              </button>
+              <button
+                onClick={() => setDispatchMode('confirm')}
+                className="px-3 py-2 rounded-lg text-xs transition-colors"
+                style={{
+                  background: dispatchMode === 'confirm' ? 'rgba(96,165,250,0.12)' : 'rgba(255,255,255,0.04)',
+                  border: dispatchMode === 'confirm' ? '1px solid rgba(96,165,250,0.25)' : '1px solid rgba(255,255,255,0.08)',
+                  color: dispatchMode === 'confirm' ? '#93c5fd' : 'rgba(161,161,170,1)',
+                }}
+              >
+                确认后执行
+              </button>
+            </div>
+            <p className="text-[11px] text-ink-4 mt-2 leading-relaxed">
+              自动执行：主助手识别后立即派活。确认后执行：先给方案，由你确认再执行。
+            </p>
+          </div>
+        </section>
+
+        {/* ── About ── */}
         <section className="space-y-2.5">
           <div className="flex items-center gap-2">
             <Info className="w-3.5 h-3.5 text-ink-3" strokeWidth={1.75} />

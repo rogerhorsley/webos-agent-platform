@@ -4,8 +4,11 @@ import {
   Connection, Edge, Node, BackgroundVariant, Handle, Position, NodeProps, Panel,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Zap, Bot, GitBranch, Wrench, ChevronDown, Save, Play, Loader2, X, Trash2, List } from 'lucide-react'
+import { Users, Save, Play, Loader2, X, Trash2, List } from 'lucide-react'
 import { useWorkflows, useCreateWorkflow, useUpdateWorkflow } from '../../hooks/useWorkflows'
+import { useTeams } from '../../hooks/useTeams'
+import { useAgents } from '../../hooks/useAgents'
+import { workflowsApi } from '../../lib/api'
 
 // Node styles — 精确协议配色
 const NODE_STYLES = {
@@ -13,6 +16,7 @@ const NODE_STYLES = {
   agent:     { border: 'rgba(96,165,250,0.5)',  bg: 'rgba(96,165,250,0.10)',  text: '#60A5FA' },
   condition: { border: 'rgba(251,191,36,0.5)',  bg: 'rgba(251,191,36,0.10)',  text: '#FBBF24' },
   tool:      { border: 'rgba(167,139,250,0.5)', bg: 'rgba(167,139,250,0.10)', text: '#A78BFA' },
+  agent_team:{ border: 'rgba(192,132,252,0.55)', bg: 'rgba(192,132,252,0.12)', text: '#C084FC' },
   output:    { border: 'rgba(74,222,128,0.5)',  bg: 'rgba(74,222,128,0.10)',  text: '#4ADE80' },
 }
 
@@ -59,13 +63,24 @@ function ToolNode({ data, selected }: NodeProps) {
     <Handle type="source" position={Position.Bottom} style={{ background: '#A78BFA', border: 'none', width: 8, height: 8 }} />
   </NodeWrapper>
 }
+function AgentTeamNode({ data, selected }: NodeProps) {
+  const teamId = (data as any)?.config?.teamId
+  return <NodeWrapper type="agent_team" label={String(data.label)} selected={selected}>
+    <Handle type="target" position={Position.Top} style={{ background: '#C084FC', border: 'none', width: 8, height: 8 }} />
+    <Handle type="source" position={Position.Bottom} style={{ background: '#C084FC', border: 'none', width: 8, height: 8 }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 10, opacity: 0.8, color: '#c4b5fd' }}>
+      <Users style={{ width: 10, height: 10 }} />
+      <span>{teamId ? `team:${String(teamId).slice(0, 6)}` : 'select-team'}</span>
+    </div>
+  </NodeWrapper>
+}
 function OutputNode({ data, selected }: NodeProps) {
   return <NodeWrapper type="output" label={String(data.label)} selected={selected}>
     <Handle type="target" position={Position.Top} style={{ background: '#4ADE80', border: 'none', width: 8, height: 8 }} />
   </NodeWrapper>
 }
 
-const nodeTypes = { trigger: TriggerNode, agent: AgentNode, condition: ConditionNode, tool: ToolNode, output: OutputNode }
+const nodeTypes = { trigger: TriggerNode, agent: AgentNode, condition: ConditionNode, tool: ToolNode, agent_team: AgentTeamNode, output: OutputNode }
 
 const initialNodes: Node[] = [
   { id: 'trigger-1', type: 'trigger', data: { label: 'Manual Trigger' }, position: { x: 250, y: 30 } },
@@ -88,6 +103,7 @@ let nodeCounter = 100
 const PALETTE = [
   { type: 'trigger',   label: 'Trigger',   color: '#E84C6A' },
   { type: 'agent',     label: 'Agent',     color: '#60A5FA' },
+  { type: 'agent_team',label: 'Agent Team', color: '#C084FC' },
   { type: 'condition', label: 'Condition', color: '#FBBF24' },
   { type: 'tool',      label: 'Tool',      color: '#A78BFA' },
   { type: 'output',    label: 'Output',    color: '#4ADE80' },
@@ -98,9 +114,14 @@ export function CanvasApp() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [workflowName, setWorkflowName] = useState('My Workflow')
+  const [runInput, setRunInput] = useState('')
+  const [runResult, setRunResult] = useState<any>(null)
+  const [isRunning, setIsRunning] = useState(false)
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null)
   const [showList, setShowList] = useState(false)
   const { data: workflows = [] } = useWorkflows()
+  const { data: teams = [] } = useTeams()
+  const { data: agents = [] } = useAgents()
   const createWorkflow = useCreateWorkflow()
   const updateWorkflow = useUpdateWorkflow()
 
@@ -120,6 +141,28 @@ export function CanvasApp() {
     const payload = { name: workflowName, nodes: nodes as any[], edges: edges as any[] }
     if (currentWorkflowId) { await updateWorkflow.mutateAsync({ id: currentWorkflowId, ...payload }) }
     else { const r = await createWorkflow.mutateAsync(payload); setCurrentWorkflowId(r.id) }
+  }
+
+  const [runError, setRunError] = useState<string | null>(null)
+
+  const handleRun = async () => {
+    try {
+      setIsRunning(true)
+      setRunError(null)
+      if (!currentWorkflowId) {
+        const created = await createWorkflow.mutateAsync({ name: workflowName, nodes: nodes as any[], edges: edges as any[] })
+        setCurrentWorkflowId(created.id)
+        const res = await workflowsApi.run(created.id, { input: runInput || undefined })
+        setRunResult(res)
+        return
+      }
+      const res = await workflowsApi.run(currentWorkflowId, { input: runInput || undefined })
+      setRunResult(res)
+    } catch (err: any) {
+      setRunError(err.message || 'Workflow run failed')
+    } finally {
+      setIsRunning(false)
+    }
   }
 
   const isSaving = createWorkflow.isPending || updateWorkflow.isPending
@@ -164,7 +207,7 @@ export function CanvasApp() {
         >
           <Controls style={{ background: '#1C1C1F', border: '1px solid rgba(255,255,255,0.06)', boxShadow: 'none' }} />
           <MiniMap style={{ background: '#1C1C1F', border: '1px solid rgba(255,255,255,0.06)' }}
-            nodeColor={(n) => ({ trigger: '#E84C6A', agent: '#60A5FA', condition: '#FBBF24', tool: '#A78BFA', output: '#4ADE80' }[n.type || ''] || '#52525B')}
+            nodeColor={(n) => ({ trigger: '#E84C6A', agent: '#60A5FA', agent_team: '#C084FC', condition: '#FBBF24', tool: '#A78BFA', output: '#4ADE80' }[n.type || ''] || '#52525B')}
             maskColor="rgba(12,12,14,0.7)"
           />
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(255,255,255,0.06)" />
@@ -176,8 +219,19 @@ export function CanvasApp() {
                 {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 Save
               </button>
-              <button className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-state-success text-xs" style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)' }}>
-                <Play className="w-3 h-3" /> Run
+              <input
+                value={runInput}
+                onChange={e => setRunInput(e.target.value)}
+                placeholder="Run input..."
+                className="bg-transparent text-ink-2 text-xs w-32 focus:outline-none"
+              />
+              <button
+                onClick={handleRun}
+                disabled={isRunning}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-state-success text-xs"
+                style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)' }}
+              >
+                {isRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Run
               </button>
             </div>
           </Panel>
@@ -200,10 +254,73 @@ export function CanvasApp() {
                 onChange={e => { setNodes(ns => ns.map(n => n.id === selectedNode.id ? { ...n, data: { ...n.data, label: e.target.value } } : n)); setSelectedNode(p => p ? { ...p, data: { ...p.data, label: e.target.value } } : p) }}
                 className="app-input text-xs py-1.5" />
             </div>
+            {selectedNode.type === 'agent' && (
+              <div>
+                <label className="text-ink-4 text-[11px] mb-1 block">Agent</label>
+                <select
+                  value={String((selectedNode.data as any)?.config?.agentId || '')}
+                  onChange={e => {
+                    const value = e.target.value
+                    setNodes(ns => ns.map(n => n.id === selectedNode.id ? {
+                      ...n,
+                      data: { ...n.data, config: { ...(n.data as any).config, agentId: value } },
+                    } : n))
+                    setSelectedNode(p => p ? {
+                      ...p,
+                      data: { ...p.data, config: { ...(p.data as any).config, agentId: value } },
+                    } : p)
+                  }}
+                  className="app-input text-xs py-1.5 appearance-none"
+                >
+                  <option value="">None</option>
+                  {(agents as any[]).map((agent: any) => (
+                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {selectedNode.type === 'agent_team' && (
+              <div>
+                <label className="text-ink-4 text-[11px] mb-1 block">Team</label>
+                <select
+                  value={String((selectedNode.data as any)?.config?.teamId || '')}
+                  onChange={e => {
+                    const value = e.target.value
+                    setNodes(ns => ns.map(n => n.id === selectedNode.id ? {
+                      ...n,
+                      data: { ...n.data, config: { ...(n.data as any).config, teamId: value } },
+                    } : n))
+                    setSelectedNode(p => p ? {
+                      ...p,
+                      data: { ...p.data, config: { ...(p.data as any).config, teamId: value } },
+                    } : p)
+                  }}
+                  className="app-input text-xs py-1.5 appearance-none"
+                >
+                  <option value="">None</option>
+                  {(teams as any[]).map((team: any) => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <p className="text-ink-4 text-[11px] mb-1">Node ID</p>
               <p className="text-ink-3 text-[11px] font-mono">{selectedNode.id}</p>
             </div>
+            {runError && (
+              <div className="text-[11px] text-state-error p-2 rounded" style={{ background: 'rgba(248,113,113,0.08)' }}>
+                {runError}
+              </div>
+            )}
+            {runResult && (
+              <div>
+                <p className="text-ink-4 text-[11px] mb-1">Last Run</p>
+                <p className="text-ink-3 text-[11px] leading-relaxed line-clamp-6">
+                  {runResult.output || JSON.stringify(runResult).slice(0, 240)}
+                </p>
+              </div>
+            )}
           </div>
           <div className="p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
             <button onClick={() => { setNodes(ns => ns.filter(n => n.id !== selectedNode.id)); setEdges(es => es.filter(e => e.source !== selectedNode.id && e.target !== selectedNode.id)); setSelectedNode(null) }}

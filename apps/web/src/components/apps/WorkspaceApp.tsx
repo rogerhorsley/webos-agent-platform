@@ -1,13 +1,13 @@
 import { useState, useCallback } from 'react'
 import {
   FolderOpen, File, ChevronRight, ChevronDown, Terminal, Play, Loader2,
-  AlertCircle, RefreshCw, Eye, Bot, Sparkles, FolderPlus, Cpu,
+  AlertCircle, RefreshCw, Bot, Sparkles, Cpu,
   Server, CheckCircle, X, Save, Folder,
 } from 'lucide-react'
 import {
   useWorkspacesList, useWorkspaceFiles, useWorkspaceFile,
   useExecInWorkspace, useRunClaude, useWriteWorkspaceFile,
-  useDeleteWorkspaceFile, useSandboxInfo,
+  useSandboxInfo,
 } from '../../hooks/useWorkspaces'
 import { useAgents } from '../../hooks/useAgents'
 
@@ -17,9 +17,8 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`
 }
 
-function getFileIcon(name: string, type: string) {
+function getFileIcon(_name: string, type: string) {
   if (type === 'directory') return Folder
-  const ext = name.split('.').pop()?.toLowerCase()
   return File
 }
 
@@ -33,8 +32,7 @@ function FileNode({ agentId, entry, depth, onSelect, selectedPath, onRefresh }: 
   onRefresh: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const { data: children, refetch } = useWorkspaceFiles(agentId, expanded && entry.type === 'directory' ? entry.path : '')
-  const deleteFile = useDeleteWorkspaceFile()
+  const { data: children } = useWorkspaceFiles(agentId, expanded && entry.type === 'directory' ? entry.path : '')
   const Icon = getFileIcon(entry.name, entry.type)
   const isSelected = selectedPath === entry.path
 
@@ -248,12 +246,12 @@ function CommandPanel({ agentId }: { agentId: string }) {
 }
 
 export function WorkspaceApp() {
-  const { data: workspaces = [], isLoading, error, refetch } = useWorkspacesList()
+  const { data: workspaces = [] } = useWorkspacesList()
   const { data: agents = [] } = useAgents()
   const { data: sandboxInfo } = useSandboxInfo()
   const [selectedAgentId, setSelectedAgentId] = useState<string>('shared')
   const [selectedFile, setSelectedFile] = useState<string>('')
-  const [currentPath, setCurrentPath] = useState<string>('')
+  const [_currentPath, _setCurrentPath] = useState<string>('')
 
   const { data: rootFiles, refetch: refetchFiles } = useWorkspaceFiles(selectedAgentId, '')
 
