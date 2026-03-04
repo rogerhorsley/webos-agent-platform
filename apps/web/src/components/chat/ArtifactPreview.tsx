@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Code2, Image as ImageIcon, Film, X, Maximize2, Minimize2,
-  Layers, ChevronLeft, ChevronRight,
+  Layers, ChevronLeft, ChevronRight, Pencil,
 } from 'lucide-react'
+import { VisualEditor, generateEditPrompt, type EditRecord } from './VisualEditor'
 
 export interface Artifact {
   id: string
@@ -186,13 +187,15 @@ try {
   )
 }
 
-export function ArtifactPreview({ artifacts, streaming, onClose }: {
+export function ArtifactPreview({ artifacts, streaming, onClose, onEditSave }: {
   artifacts: Artifact[]
   streaming?: boolean
   onClose: () => void
+  onEditSave?: (prompt: string) => void
 }) {
   const [activeIdx, setActiveIdx] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [editMode, setEditMode] = useState(false)
 
   useEffect(() => {
     if (artifacts.length > 0 && activeIdx >= artifacts.length) {
@@ -247,6 +250,14 @@ export function ArtifactPreview({ artifacts, streaming, onClose }: {
           </div>
         )}
 
+        {(active.type === 'html' || active.type === 'svg') && !streaming && (
+          <button onClick={() => setEditMode(true)}
+            className="flex items-center gap-1 px-2 py-1 hover:bg-white/10 rounded-lg transition-colors text-white/50 hover:text-white/80 text-[11px]"
+            title="Visual Edit">
+            <Pencil className="w-3 h-3" /> Edit
+          </button>
+        )}
+
         <button onClick={() => setIsFullscreen(!isFullscreen)}
           className="p-1 hover:bg-white/10 rounded-lg transition-colors">
           {isFullscreen
@@ -258,14 +269,28 @@ export function ArtifactPreview({ artifacts, streaming, onClose }: {
         </button>
       </div>
 
-      {/* Preview area */}
-      <div className="flex-1 overflow-hidden p-2 min-h-0">
-        {active.type === 'html' && <HtmlPreview content={active.content} streaming={streaming} />}
-        {active.type === 'svg' && <SvgPreview content={active.content} />}
-        {active.type === 'image' && <ImagePreview src={active.content} title={active.title} />}
-        {active.type === 'video' && <VideoPreview src={active.content} title={active.title} />}
-        {active.type === 'react' && <ReactPreview content={active.content} />}
-      </div>
+      {/* Preview or Edit area */}
+      {editMode && (active.type === 'html' || active.type === 'svg') ? (
+        <div className="flex-1 overflow-hidden min-h-0">
+          <VisualEditor
+            content={active.content}
+            onSave={(edits: EditRecord[], modifiedHtml: string) => {
+              const prompt = generateEditPrompt(edits, active.content, modifiedHtml)
+              if (prompt && onEditSave) onEditSave(prompt)
+              setEditMode(false)
+            }}
+            onClose={() => setEditMode(false)}
+          />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-hidden p-2 min-h-0">
+          {active.type === 'html' && <HtmlPreview content={active.content} streaming={streaming} />}
+          {active.type === 'svg' && <SvgPreview content={active.content} />}
+          {active.type === 'image' && <ImagePreview src={active.content} title={active.title} />}
+          {active.type === 'video' && <VideoPreview src={active.content} title={active.title} />}
+          {active.type === 'react' && <ReactPreview content={active.content} />}
+        </div>
+      )}
     </div>
   )
 }

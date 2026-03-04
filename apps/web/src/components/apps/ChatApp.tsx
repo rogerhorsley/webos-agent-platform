@@ -319,6 +319,26 @@ export function ChatApp() {
     socket.emit('chat:stop')
   }, [])
 
+  const sendEditPrompt = useCallback((prompt: string) => {
+    if (isStreaming) return
+    setError(null)
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: prompt }
+    const assistantId = (Date.now() + 1).toString()
+    const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', agentId: selectedAgentId, streaming: true }
+    const history = [...messages, userMsg]
+    setMessages([...history, assistantMsg])
+    setIsStreaming(true)
+    streamingIdRef.current = assistantId
+    const socket = getSocket()
+    socket.emit('chat:message', {
+      agentId: selectedAgentId || undefined,
+      messages: history.map(m => ({ role: m.role, content: m.content })),
+      systemPrompt: selectedAgent?.systemPrompt,
+      model: selectedAgent?.config?.model,
+      dispatchMode,
+    })
+  }, [isStreaming, messages, selectedAgentId, selectedAgent, dispatchMode])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -554,6 +574,9 @@ export function ChatApp() {
             artifacts={currentArtifacts}
             streaming={isStreaming}
             onClose={() => setShowPreview(false)}
+            onEditSave={(prompt) => {
+              sendEditPrompt(prompt)
+            }}
           />
         </div>
       )}
