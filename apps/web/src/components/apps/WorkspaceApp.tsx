@@ -1,13 +1,14 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import {
   FolderOpen, File, ChevronRight, ChevronDown, Terminal, Play, Loader2,
   AlertCircle, RefreshCw, Bot, Sparkles, Cpu,
-  Server, CheckCircle, X, Save, Folder,
+  Server, CheckCircle, X, Save, Folder, Upload, Trash2,
+  Edit3, FolderPlus, FilePlus,
 } from 'lucide-react'
 import {
   useWorkspacesList, useWorkspaceFiles, useWorkspaceFile,
   useExecInWorkspace, useRunClaude, useWriteWorkspaceFile,
-  useSandboxInfo,
+  useDeleteWorkspaceFile, useSandboxInfo,
 } from '../../hooks/useWorkspaces'
 import { useAgents } from '../../hooks/useAgents'
 
@@ -22,14 +23,14 @@ function getFileIcon(_name: string, type: string) {
   return File
 }
 
-// File tree node
-function FileNode({ agentId, entry, depth, onSelect, selectedPath, onRefresh }: {
+function FileNode({ agentId, entry, depth, onSelect, selectedPath, onRefresh, onContextAction }: {
   agentId: string
   entry: any
   depth: number
   onSelect: (path: string, type: string) => void
   selectedPath: string
   onRefresh: () => void
+  onContextAction: (action: string, path: string, type: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const { data: children } = useWorkspaceFiles(agentId, expanded && entry.type === 'directory' ? entry.path : '')
@@ -58,8 +59,18 @@ function FileNode({ agentId, entry, depth, onSelect, selectedPath, onRefresh }: 
         ) : <span className="w-3 flex-shrink-0" />}
         <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${entry.type === 'directory' ? 'text-yellow-400/70' : 'text-blue-400/70'}`} />
         <span className="text-xs flex-1 truncate">{entry.name}</span>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={e => { e.stopPropagation(); onContextAction('rename', entry.path, entry.type) }}
+            className="p-0.5 hover:bg-white/10 rounded" title="Rename">
+            <Edit3 className="w-3 h-3 text-white/40" />
+          </button>
+          <button onClick={e => { e.stopPropagation(); onContextAction('delete', entry.path, entry.type) }}
+            className="p-0.5 hover:bg-red-500/20 rounded" title="Delete">
+            <Trash2 className="w-3 h-3 text-red-400/60" />
+          </button>
+        </div>
         {entry.size !== undefined && (
-          <span className="text-white/20 text-[10px] opacity-0 group-hover:opacity-100">{formatBytes(entry.size)}</span>
+          <span className="text-white/20 text-[10px] opacity-0 group-hover:opacity-100 ml-1">{formatBytes(entry.size)}</span>
         )}
       </div>
       {entry.type === 'directory' && expanded && children && (
@@ -73,6 +84,7 @@ function FileNode({ agentId, entry, depth, onSelect, selectedPath, onRefresh }: 
               onSelect={onSelect}
               selectedPath={selectedPath}
               onRefresh={onRefresh}
+              onContextAction={onContextAction}
             />
           ))}
           {children.length === 0 && (
@@ -84,7 +96,6 @@ function FileNode({ agentId, entry, depth, onSelect, selectedPath, onRefresh }: 
   )
 }
 
-// File viewer
 function FileViewer({ agentId, filePath, onClose }: { agentId: string; filePath: string; onClose: () => void }) {
   const { data: content, isLoading, refetch } = useWorkspaceFile(agentId, filePath)
   const writeFile = useWriteWorkspaceFile()
@@ -93,7 +104,7 @@ function FileViewer({ agentId, filePath, onClose }: { agentId: string; filePath:
 
   const fileName = filePath.split('/').pop() || filePath
   const ext = fileName.split('.').pop()?.toLowerCase()
-  const isText = ['md', 'txt', 'json', 'ts', 'tsx', 'js', 'jsx', 'py', 'sh', 'css', 'html', 'yaml', 'yml', 'toml'].includes(ext || '')
+  const isText = ['md', 'txt', 'json', 'ts', 'tsx', 'js', 'jsx', 'py', 'sh', 'css', 'html', 'yaml', 'yml', 'toml', 'xml', 'ini', 'cfg', 'env', 'log'].includes(ext || '')
 
   const startEdit = () => { setEditContent(content || ''); setEditing(true) }
   const saveEdit = async () => {
@@ -149,7 +160,6 @@ function FileViewer({ agentId, filePath, onClose }: { agentId: string; filePath:
   )
 }
 
-// Command runner panel
 function CommandPanel({ agentId }: { agentId: string }) {
   const [command, setCommand] = useState('')
   const [claudeTask, setClaudeTask] = useState('')
@@ -176,7 +186,6 @@ function CommandPanel({ agentId }: { agentId: string }) {
 
   return (
     <div className="border-t border-white/10 flex-shrink-0">
-      {/* Tabs */}
       <div className="flex gap-1 p-1.5 border-b border-white/10">
         <button onClick={() => setTab('exec')}
           className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${tab === 'exec' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'}`}>
@@ -188,7 +197,6 @@ function CommandPanel({ agentId }: { agentId: string }) {
         </button>
       </div>
 
-      {/* Input */}
       <div className="p-2">
         {tab === 'exec' ? (
           <div className="flex gap-2">
@@ -219,7 +227,6 @@ function CommandPanel({ agentId }: { agentId: string }) {
         )}
       </div>
 
-      {/* Result */}
       {lastResult && (
         <div className="mx-2 mb-2 p-2 bg-black/30 rounded border border-white/5 max-h-32 overflow-auto">
           <div className="flex items-center justify-between mb-1">
@@ -251,18 +258,74 @@ export function WorkspaceApp() {
   const { data: sandboxInfo } = useSandboxInfo()
   const [selectedAgentId, setSelectedAgentId] = useState<string>('shared')
   const [selectedFile, setSelectedFile] = useState<string>('')
-  const [_currentPath, _setCurrentPath] = useState<string>('')
+  const [renameTarget, setRenameTarget] = useState<{ path: string; type: string } | null>(null)
+  const [renameName, setRenameName] = useState('')
+  const [newFileName, setNewFileName] = useState('')
+  const [showNewFile, setShowNewFile] = useState<'file' | 'folder' | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data: rootFiles, refetch: refetchFiles } = useWorkspaceFiles(selectedAgentId, '')
+  const exec = useExecInWorkspace()
+  const writeFile = useWriteWorkspaceFile()
+  const deleteFile = useDeleteWorkspaceFile()
 
   const handleFileSelect = useCallback((path: string, type: string) => {
     if (type === 'file') setSelectedFile(path)
   }, [])
 
+  const handleContextAction = useCallback((action: string, path: string, type: string) => {
+    if (action === 'rename') {
+      setRenameTarget({ path, type })
+      setRenameName(path.split('/').pop() || '')
+    } else if (action === 'delete') {
+      if (confirm(`Delete ${type === 'directory' ? 'folder' : 'file'} "${path}"?`)) {
+        if (type === 'directory') {
+          exec.mutate({ agentId: selectedAgentId, command: `rm -rf "${path}"` })
+        } else {
+          deleteFile.mutate({ agentId: selectedAgentId, filePath: path })
+        }
+        if (selectedFile === path) setSelectedFile('')
+        setTimeout(() => refetchFiles(), 500)
+      }
+    }
+  }, [selectedAgentId, selectedFile])
+
+  const handleRename = async () => {
+    if (!renameTarget || !renameName) return
+    const dir = renameTarget.path.includes('/') ? renameTarget.path.substring(0, renameTarget.path.lastIndexOf('/')) + '/' : ''
+    const newPath = dir + renameName
+    await exec.mutateAsync({ agentId: selectedAgentId, command: `mv "${renameTarget.path}" "${newPath}"` })
+    setRenameTarget(null)
+    if (selectedFile === renameTarget.path) setSelectedFile(newPath)
+    refetchFiles()
+  }
+
+  const handleNewFile = async () => {
+    if (!newFileName) return
+    if (showNewFile === 'folder') {
+      await exec.mutateAsync({ agentId: selectedAgentId, command: `mkdir -p "${newFileName}"` })
+    } else {
+      await writeFile.mutateAsync({ agentId: selectedAgentId, filePath: newFileName, content: '' })
+    }
+    setShowNewFile(null)
+    setNewFileName('')
+    refetchFiles()
+  }
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    for (const file of files) {
+      const text = await file.text()
+      await writeFile.mutateAsync({ agentId: selectedAgentId, filePath: file.name, content: text })
+    }
+    refetchFiles()
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const selectedAgent = agents.find((a: any) => a.id === selectedAgentId)
   const selectedWorkspace = workspaces.find(w => w.agentId === selectedAgentId)
 
-  // All selectable workspaces: shared + agent workspaces
   const allWorkspaces = [
     { agentId: 'shared', agentName: 'Shared' },
     ...workspaces.map((w: any) => {
@@ -316,14 +379,42 @@ export function WorkspaceApp() {
           ))}
         </div>
 
-        {/* File tree */}
-        <div className="flex-1 overflow-auto py-1">
-          <div className="flex items-center justify-between px-3 mb-1">
-            <p className="text-white/30 text-[10px] uppercase tracking-wide">Files</p>
-            <button onClick={() => refetchFiles()} className="p-0.5 hover:bg-white/10 rounded">
+        {/* File tree header with actions */}
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/5">
+          <p className="text-white/30 text-[10px] uppercase tracking-wide">Files</p>
+          <div className="flex items-center gap-0.5">
+            <button onClick={() => { setShowNewFile('file'); setNewFileName('') }} className="p-1 hover:bg-white/10 rounded" title="New File">
+              <FilePlus className="w-3 h-3 text-white/30" />
+            </button>
+            <button onClick={() => { setShowNewFile('folder'); setNewFileName('') }} className="p-1 hover:bg-white/10 rounded" title="New Folder">
+              <FolderPlus className="w-3 h-3 text-white/30" />
+            </button>
+            <button onClick={() => fileInputRef.current?.click()} className="p-1 hover:bg-white/10 rounded" title="Upload">
+              <Upload className="w-3 h-3 text-white/30" />
+            </button>
+            <button onClick={() => refetchFiles()} className="p-1 hover:bg-white/10 rounded" title="Refresh">
               <RefreshCw className="w-3 h-3 text-white/30" />
             </button>
           </div>
+          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleUpload} />
+        </div>
+
+        {/* New file/folder inline input */}
+        {showNewFile && (
+          <div className="px-2 py-1.5 border-b border-white/5 flex items-center gap-1">
+            {showNewFile === 'folder' ? <Folder className="w-3 h-3 text-yellow-400/70" /> : <File className="w-3 h-3 text-blue-400/70" />}
+            <input value={newFileName} onChange={e => setNewFileName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleNewFile(); if (e.key === 'Escape') setShowNewFile(null) }}
+              placeholder={showNewFile === 'folder' ? 'folder-name' : 'filename.ext'}
+              className="flex-1 px-1 py-0.5 bg-black/30 border border-white/10 rounded text-xs text-white placeholder-white/30 focus:outline-none"
+              autoFocus />
+            <button onClick={handleNewFile} className="p-0.5 hover:bg-white/10 rounded"><CheckCircle className="w-3 h-3 text-green-400" /></button>
+            <button onClick={() => setShowNewFile(null)} className="p-0.5 hover:bg-white/10 rounded"><X className="w-3 h-3 text-white/40" /></button>
+          </div>
+        )}
+
+        {/* File tree */}
+        <div className="flex-1 overflow-auto py-1">
           {rootFiles?.map((entry: any) => (
             <FileNode
               key={entry.path}
@@ -333,6 +424,7 @@ export function WorkspaceApp() {
               onSelect={handleFileSelect}
               selectedPath={selectedFile}
               onRefresh={refetchFiles}
+              onContextAction={handleContextAction}
             />
           ))}
           {rootFiles?.length === 0 && (
@@ -399,6 +491,25 @@ export function WorkspaceApp() {
           <CommandPanel agentId={selectedAgentId} />
         )}
       </div>
+
+      {/* Rename modal */}
+      {renameTarget && (
+        <div className="overlay" onClick={() => setRenameTarget(null)}>
+          <div className="modal w-[360px] p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-ink-1 font-semibold text-sm mb-3">Rename</h3>
+            <p className="text-ink-3 text-xs mb-2">Current: <span className="font-mono">{renameTarget.path}</span></p>
+            <input value={renameName} onChange={e => setRenameName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleRename() }}
+              className="app-input mb-4" autoFocus />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setRenameTarget(null)} className="btn-secondary">Cancel</button>
+              <button onClick={handleRename} disabled={exec.isPending} className="btn-primary">
+                {exec.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rename'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -44,19 +44,21 @@
 - Agent 自主性引擎（消息驱动 + 定时驱动 + 事件驱动）
 - 前端 ChannelsApp（渠道管理 + 定时任务 UI）
 
-### Phase 6: 内置应用套件 🔧 (进行中)
+### Phase 6: 内置应用套件 ✅
 - ✅ 后端 notes 表 + CRUD API（`/api/notes`）
 - ✅ 后端 mail_accounts + mail_messages 表
 - ✅ 后端 mailService（IMAP/SMTP）
 - ✅ 后端 browserProxy（Puppeteer 会话管理）
 - ✅ 后端 browser routes（navigate/click/type/screenshot/back/forward）
-- ✅ 后端 mail routes（inbox/send/reply/delete）
+- ✅ 后端 mail routes（accounts CRUD + inbox/send/read/delete）
 - ✅ 依赖安装（TipTap, Puppeteer, imapflow, nodemailer）
-- ⬜ 前端 NoteApp（TipTap 富文本编辑器）
-- ⬜ 前端 BrowserApp（截图交互浏览器）
-- ⬜ 前端 MailApp（三栏邮件客户端）
-- ⬜ 前端 WorkspaceApp 升级（双栏文件管理器）
-- ⬜ Dock 更新（新增 Notes/Browser/Mail 图标）
+- ✅ 前端 NoteApp（TipTap 富文本编辑器，左侧笔记列表 + 右侧编辑器 + 格式化工具栏）
+- ✅ 前端 BrowserApp（地址栏 + 截图展示 + Click/Type 交互模式 + 导航控制）
+- ✅ 前端 MailApp（三栏邮件客户端：账户/消息列表/内容 + 添加账户/写邮件弹窗）
+- ✅ 前端 WorkspaceApp 升级（新建文件/文件夹 + 上传 + 重命名 + 删除）
+- ✅ Dock 更新（新增 Notes/Browser/Mail 图标）
+- ✅ 后端路由注册（notes/browser/mail 路由注册到 index.ts）
+- ✅ 前端 API 客户端 + React Query hooks（notesApi/browserApi/mailApi）
 
 ## 技术栈
 
@@ -150,14 +152,13 @@ webos-agent-platform/
 - Telegram Bot Token（渠道功能）
 - 飞书 App ID/Secret（渠道功能）
 
-## 待办（Phase 6 剩余）
+## 待办（Phase 7）
 
-1. **前端 NoteApp** — TipTap 富文本编辑器，左侧笔记列表 + 右侧编辑器 + AI 辅助
-2. **前端 BrowserApp** — 地址栏 + 截图展示 + 点击/输入事件转发
-3. **前端 MailApp** — 三栏布局（文件夹/列表/内容）+ 写邮件弹窗
-4. **前端 WorkspaceApp 升级** — 双栏文件管理器 + 上传/重命名/移动
-5. **Dock 更新** — 新增 Notes/Browser/Mail 图标
-6. **后端 mail routes** — `apps/api/src/routes/mail.ts`（待创建）
+- 用户认证系统（JWT/OAuth）
+- 性能优化（虚拟列表、懒加载、代码分割）
+- 安全加固（CSRF、Rate Limiting）
+- 监控告警（健康检查、错误追踪）
+- 国际化（i18n）
 
 ## 后续规划
 

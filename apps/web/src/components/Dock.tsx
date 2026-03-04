@@ -2,7 +2,7 @@ import { useWindowStore } from '../stores/windowStore'
 import {
   Users, ListTodo, MessageSquare, Terminal,
   Puzzle, FileText, Workflow, Settings, FolderOpen,
-  Minus, Radio,
+  Minus, Radio, StickyNote, Globe, Mail,
 } from 'lucide-react'
 
 const apps = [
@@ -12,6 +12,9 @@ const apps = [
   { id: 'channels',   title: 'Channels',   icon: 'Radio',         component: 'Channels' },
   { id: 'workspace',  title: 'Workspace',  icon: 'FolderOpen',    component: 'Workspace' },
   { id: 'terminal',   title: 'Terminal',   icon: 'Terminal',      component: 'Terminal' },
+  { id: 'notes',      title: 'Notes',      icon: 'StickyNote',    component: 'Notes' },
+  { id: 'browser',    title: 'Browser',    icon: 'Globe',         component: 'Browser' },
+  { id: 'mail',       title: 'Mail',       icon: 'Mail',          component: 'Mail' },
   { id: 'skills',     title: 'Skills',     icon: 'Puzzle',        component: 'Skills' },
   { id: 'prompts',    title: 'Prompts',    icon: 'FileText',      component: 'Prompts' },
   { id: 'canvas',     title: 'Canvas',     icon: 'Workflow',      component: 'Canvas' },
@@ -20,6 +23,7 @@ const apps = [
 
 const iconMap: Record<string, React.ComponentType<{ className?: string; strokeWidth?: number | string }>> = {
   Users, ListTodo, MessageSquare, Terminal, Puzzle, FileText, Workflow, Settings, FolderOpen, Radio,
+  StickyNote, Globe, Mail,
 }
 
 // ─── Window Tray：右侧已打开窗口列表 ─────────────────────────────────────────

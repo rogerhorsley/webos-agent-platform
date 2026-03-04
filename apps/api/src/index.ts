@@ -26,6 +26,9 @@ import './channels/index'
 import { setChannelManagerIO, restoreChannels } from './services/channelManager'
 import { startScheduler, setSchedulerIO } from './services/taskScheduler'
 import { startAutonomyLoop, setAutonomyIO } from './services/agentAutonomy'
+import { noteRoutes } from './routes/notes'
+import { browserRoutes } from './routes/browser'
+import { mailRoutes } from './routes/mail'
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
 const HOST = process.env.HOST || '0.0.0.0'
@@ -185,6 +188,9 @@ async function main() {
   fastify.register(channelRoutes, { prefix: '/api/channels' })
   fastify.register(scheduledTaskRoutes, { prefix: '/api/scheduled-tasks' })
   fastify.register(workspaceRoutes, { prefix: '/api/workspaces' })
+  fastify.register(noteRoutes, { prefix: '/api/notes' })
+  fastify.register(browserRoutes, { prefix: '/api/browser' })
+  fastify.register(mailRoutes, { prefix: '/api/mail' })
 
   // Serve built frontend (production mode)
   const webDistPath = path.resolve(process.cwd(), '..', 'web', 'dist')
