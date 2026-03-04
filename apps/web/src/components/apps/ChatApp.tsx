@@ -1,11 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   Send, Bot, User, ChevronDown, Loader2, AlertCircle, Sparkles,
   Paperclip, X, Image as ImageIcon, FileText, Volume2, Video, Square, CheckCircle2, Play,
+  PanelRightOpen, PanelRightClose,
 } from 'lucide-react'
 import { getSocket } from '../../lib/socket'
 import { useAgents } from '../../hooks/useAgents'
 import { MessageContent } from '../chat/MessageContent'
+import { ArtifactPreview, extractArtifacts } from '../chat/ArtifactPreview'
 import { tasksApi, teamsApi } from '../../lib/api'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -80,6 +82,20 @@ export function ChatApp() {
   const [selectedAgentId, setSelectedAgentId] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+
+  const latestAssistantContent = useMemo(() => {
+    const assistantMsgs = messages.filter(m => m.role === 'assistant' && m.content)
+    return assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1].content : ''
+  }, [messages])
+
+  const currentArtifacts = useMemo(() => extractArtifacts(latestAssistantContent), [latestAssistantContent])
+
+  useEffect(() => {
+    if (currentArtifacts.length > 0 && !showPreview) {
+      setShowPreview(true)
+    }
+  }, [currentArtifacts.length])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const streamingIdRef = useRef<string | null>(null)
@@ -306,11 +322,13 @@ export function ChatApp() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      className="h-full flex flex-col gap-3"
-      onDragOver={e => e.preventDefault()}
-      onDrop={handleDrop}
-    >
+    <div className="h-full flex">
+      {/* ── Chat panel ── */}
+      <div
+        className={`flex flex-col gap-3 h-full ${showPreview && currentArtifacts.length > 0 ? 'w-1/2 border-r border-white/10 pr-1' : 'w-full'}`}
+        onDragOver={e => e.preventDefault()}
+        onDrop={handleDrop}
+      >
       {/* Agent selector */}
       <div className="flex items-center gap-2 pb-3 border-b border-white/[0.06] flex-shrink-0">
         <Sparkles className="w-3.5 h-3.5 text-desktop-accent flex-shrink-0" strokeWidth={1.75} />
@@ -332,6 +350,12 @@ export function ChatApp() {
         )}
         {selectedAgentId === 'nexus-core' && (
           <span className="badge text-[10px] text-emerald-300 bg-emerald-500/10 border-emerald-500/20">主助手</span>
+        )}
+        {currentArtifacts.length > 0 && (
+          <button onClick={() => setShowPreview(p => !p)}
+            className="ml-auto p-1.5 hover:bg-white/5 rounded-lg transition-colors" title={showPreview ? '隐藏预览' : '显示预览'}>
+            {showPreview ? <PanelRightClose className="w-3.5 h-3.5 text-desktop-accent" /> : <PanelRightOpen className="w-3.5 h-3.5 text-ink-3" />}
+          </button>
         )}
       </div>
 
@@ -521,6 +545,18 @@ export function ChatApp() {
           </button>
         )}
       </div>
+      </div>
+
+      {/* ── Artifact preview panel ── */}
+      {showPreview && currentArtifacts.length > 0 && (
+        <div className="w-1/2 h-full pl-1">
+          <ArtifactPreview
+            artifacts={currentArtifacts}
+            streaming={isStreaming}
+            onClose={() => setShowPreview(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }
