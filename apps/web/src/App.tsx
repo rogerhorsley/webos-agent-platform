@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Desktop } from './components/Desktop'
 import { Dock } from './components/Dock'
 import { WindowManager } from './components/WindowManager'
 import { GlobalSearch } from './components/GlobalSearch'
+import { SetupWizard } from './components/SetupWizard'
 import { useToastStore } from './stores/toastStore'
 
 function ToastContainer() {
@@ -22,13 +24,23 @@ function ToastContainer() {
 }
 
 function App() {
+  const [showSetup, setShowSetup] = useState(
+    () => !localStorage.getItem('nexusos_onboarding_done')
+  )
+
   return (
     <div className="h-full w-full relative">
-      <Desktop />
-      <WindowManager />
-      <Dock />
-      <GlobalSearch />
-      <ToastContainer />
+      {showSetup ? (
+        <SetupWizard onComplete={() => setShowSetup(false)} />
+      ) : (
+        <>
+          <Desktop />
+          <WindowManager />
+          <Dock />
+          <GlobalSearch />
+          <ToastContainer />
+        </>
+      )}
     </div>
   )
 }
