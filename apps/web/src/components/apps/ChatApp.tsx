@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Send, Bot, User, ChevronDown, Loader2, AlertCircle, Sparkles,
   Paperclip, X, Image as ImageIcon, FileText, Volume2, Video, Square, CheckCircle2, Play,
+  Wrench,
 } from 'lucide-react'
 import { getSocket } from '../../lib/socket'
 import { useAgents } from '../../hooks/useAgents'
@@ -18,6 +19,13 @@ interface Attachment {
   mimeType: string
 }
 
+interface ToolUseBlock {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -29,6 +37,7 @@ interface Message {
   dispatchState?: 'idle' | 'running' | 'completed' | 'failed'
   dispatchTaskId?: string
   dispatchError?: string
+  toolUses?: ToolUseBlock[]
 }
 
 interface DispatchDirective {
@@ -65,6 +74,33 @@ function AttachmentPreview({ att, onRemove }: { att: Attachment; onRemove?: () =
         >
           <X className="w-2.5 h-2.5 text-white" />
         </button>
+      )}
+    </div>
+  )
+}
+
+function ToolUseCard({ toolUse }: { toolUse: ToolUseBlock }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div
+      className="mt-2 rounded-lg overflow-hidden"
+      style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.2)' }}
+    >
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.02] transition-colors"
+      >
+        <Wrench className="w-3.5 h-3.5 text-state-info flex-shrink-0" />
+        <span className="text-xs text-state-info font-medium">{toolUse.name}</span>
+        <span className="text-[10px] text-ink-4 font-mono ml-auto">{toolUse.id.slice(0, 8)}</span>
+        <ChevronDown className={`w-3 h-3 text-ink-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2.5 border-t border-white/[0.06]">
+          <pre className="text-[11px] text-ink-3 font-mono overflow-auto mt-2 whitespace-pre-wrap leading-relaxed">
+            {JSON.stringify(toolUse.input, null, 2)}
+          </pre>
+        </div>
       )}
     </div>
   )
@@ -153,15 +189,25 @@ export function ChatApp() {
       streamingIdRef.current = null
       setIsStreaming(false)
     }
+    const onToolUse = (data: { agentId: string } & ToolUseBlock) => {
+      if (!streamingIdRef.current) return
+      setMessages(prev => prev.map(m =>
+        m.id === streamingIdRef.current
+          ? { ...m, toolUses: [...(m.toolUses || []), { type: data.type, id: data.id, name: data.name, input: data.input }] }
+          : m
+      ))
+    }
     socket.on('chat:token', onToken)
     socket.on('chat:done', onDone)
     socket.on('chat:error', onError)
     socket.on('chat:stopped', onStopped)
+    socket.on('chat:tool_use', onToolUse)
     return () => {
       socket.off('chat:token', onToken)
       socket.off('chat:done', onDone)
       socket.off('chat:error', onError)
       socket.off('chat:stopped', onStopped)
+      socket.off('chat:tool_use', onToolUse)
     }
   }, [])
 
@@ -433,6 +479,15 @@ export function ChatApp() {
                       <span className="text-[11px] text-state-error">执行失败：{message.dispatchError}</span>
                     ) : null}
                   </div>
+                </div>
+              )}
+
+              {/* Tool use blocks */}
+              {message.toolUses && message.toolUses.length > 0 && (
+                <div className="space-y-1">
+                  {message.toolUses.map(tu => (
+                    <ToolUseCard key={tu.id} toolUse={tu} />
+                  ))}
                 </div>
               )}
             </div>

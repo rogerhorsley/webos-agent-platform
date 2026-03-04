@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Search, Bot, ListTodo, FileText, Puzzle, X, Command, FolderOpen } from 'lucide-react'
+import { Search, Bot, ListTodo, FileText, Puzzle, X, Command, FolderOpen, Plus } from 'lucide-react'
 import { useWindowStore } from '../stores/windowStore'
 import { useAgents } from '../hooks/useAgents'
 import { useTasks } from '../hooks/useTasks'
@@ -26,7 +26,7 @@ const APP_ENTRIES = Object.entries(APP_MAP).map(([title, { component, icon }]) =
 }))
 
 const TYPE_ICONS: Record<string, React.ComponentType<any>> = {
-  agent: Bot, task: ListTodo, prompt: FileText, skill: Puzzle, app: Command, workspace: FolderOpen,
+  agent: Bot, task: ListTodo, prompt: FileText, skill: Puzzle, app: Command, workspace: FolderOpen, action: Plus,
 }
 
 export function GlobalSearch() {
@@ -47,12 +47,63 @@ export function GlobalSearch() {
       setOpen(false)
     }
 
-    if (!q) return APP_ENTRIES.map(e => ({ id: e.id, type: 'app', label: e.label, sublabel: e.sublabel, action: makeAppAction(e) }))
+    if (!q) {
+      const quickActions: SearchResult[] = [
+        {
+          id: 'action-new-agent',
+          type: 'action',
+          label: 'New Agent',
+          sublabel: 'Quick Action',
+          action: () => {
+            openWindow({ id: 'agent-team', title: 'Agent Team', icon: 'Users', component: 'AgentTeam' })
+            setOpen(false)
+          },
+        },
+        {
+          id: 'action-new-task',
+          type: 'action',
+          label: 'New Task',
+          sublabel: 'Quick Action',
+          action: () => {
+            openWindow({ id: 'tasks', title: 'Tasks', icon: 'ListTodo', component: 'Tasks' })
+            setOpen(false)
+          },
+        },
+      ]
+      return [
+        ...quickActions,
+        ...APP_ENTRIES.map(e => ({ id: e.id, type: 'app', label: e.label, sublabel: e.sublabel, action: makeAppAction(e) })),
+      ]
+    }
 
     const results: SearchResult[] = []
     APP_ENTRIES.forEach(e => {
       if (e.label.toLowerCase().includes(q)) results.push({ id: e.id, type: 'app', label: e.label, sublabel: 'App', action: makeAppAction(e) })
     })
+    if ('new agent'.includes(q) || 'create agent'.includes(q)) {
+      results.unshift({
+        id: 'action-new-agent',
+        type: 'action',
+        label: 'New Agent',
+        sublabel: 'Quick Action',
+        action: () => {
+          openWindow({ id: 'agent-team', title: 'Agent Team', icon: 'Users', component: 'AgentTeam' })
+          setOpen(false)
+        },
+      })
+    }
+    if ('new task'.includes(q) || 'create task'.includes(q)) {
+      results.unshift({
+        id: 'action-new-task',
+        type: 'action',
+        label: 'New Task',
+        sublabel: 'Quick Action',
+        action: () => {
+          openWindow({ id: 'tasks', title: 'Tasks', icon: 'ListTodo', component: 'Tasks' })
+          setOpen(false)
+        },
+      })
+    }
     agents.filter((a: any) => a.name?.toLowerCase().includes(q)).slice(0, 3).forEach((a: any) =>
       results.push({ id: `agent-${a.id}`, type: 'agent', label: a.name, sublabel: `Agent · ${a.role}`,
         action: () => { openWindow({ id: 'agent-team', title: 'Agent Team', icon: 'Users', component: 'AgentTeam' }); setOpen(false) } }))
