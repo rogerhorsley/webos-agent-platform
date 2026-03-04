@@ -1,7 +1,20 @@
-import { spawn, SpawnOptions } from 'child_process'
+import { spawn, spawnSync, SpawnOptions } from 'child_process'
 import path from 'path'
 import os from 'os'
 import { getWorkspacePath, WORKSPACES_ROOT, CLAUDE_BIN } from './workspace'
+
+let claudeAvailable: boolean | null = null
+
+export function isClaudeAvailable(): boolean {
+  if (claudeAvailable !== null) return claudeAvailable
+  try {
+    const result = spawnSync(CLAUDE_BIN, ['--version'], { timeout: 5000, stdio: 'pipe' })
+    claudeAvailable = result.status === 0
+  } catch {
+    claudeAvailable = false
+  }
+  return claudeAvailable
+}
 
 const DOCKER_AVAILABLE = process.env.SANDBOX_MODE === 'docker'
 const DOCKER_IMAGE = process.env.SANDBOX_IMAGE || 'nexusos-agent:latest'
@@ -58,6 +71,14 @@ export async function runClaudeTask(
   task: string,
   options: ExecOptions = {}
 ): Promise<ClaudeTaskResult> {
+  if (!isClaudeAvailable()) {
+    return {
+      output: `Claude Code CLI is not available. The "${CLAUDE_BIN}" command was not found or cannot be executed.\n\nTo install Claude Code CLI, visit: https://docs.anthropic.com/en/docs/claude-code\n\nAlternatively, you can use the Shell tab to run commands directly.`,
+      exitCode: 127,
+      duration: 0,
+    }
+  }
+
   const claudeBin = CLAUDE_BIN
   const command = `${claudeBin} --print ${JSON.stringify(task)}`
 
@@ -251,6 +272,7 @@ export function getSandboxInfo() {
     dockerImage: DOCKER_AVAILABLE ? DOCKER_IMAGE : null,
     workspacesRoot: WORKSPACES_ROOT,
     claudeBin: CLAUDE_BIN,
+    claudeAvailable: isClaudeAvailable(),
     platform: os.platform(),
     nodeVersion: process.version,
   }

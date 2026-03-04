@@ -160,7 +160,7 @@ function FileViewer({ agentId, filePath, onClose }: { agentId: string; filePath:
   )
 }
 
-function CommandPanel({ agentId }: { agentId: string }) {
+function CommandPanel({ agentId, claudeAvailable }: { agentId: string; claudeAvailable: boolean }) {
   const [command, setCommand] = useState('')
   const [claudeTask, setClaudeTask] = useState('')
   const [tab, setTab] = useState<'exec' | 'claude'>('exec')
@@ -191,14 +191,16 @@ function CommandPanel({ agentId }: { agentId: string }) {
           className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${tab === 'exec' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'}`}>
           <Terminal className="w-3 h-3" /> Shell
         </button>
-        <button onClick={() => setTab('claude')}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${tab === 'claude' ? 'bg-desktop-accent/20 text-desktop-accent' : 'text-white/40 hover:text-white/60'}`}>
-          <Sparkles className="w-3 h-3" /> Claude Code
-        </button>
+        {claudeAvailable && (
+          <button onClick={() => setTab('claude')}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${tab === 'claude' ? 'bg-desktop-accent/20 text-desktop-accent' : 'text-white/40 hover:text-white/60'}`}>
+            <Sparkles className="w-3 h-3" /> Claude Code
+          </button>
+        )}
       </div>
 
       <div className="p-2">
-        {tab === 'exec' ? (
+        {tab === 'exec' || !claudeAvailable ? (
           <div className="flex gap-2">
             <input value={command} onChange={e => setCommand(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleExec()}
@@ -350,10 +352,10 @@ export function WorkspaceApp() {
               <span className="text-white/30 text-[10px]">Loading...</span>
             )}
           </div>
-          {sandboxInfo && (
+          {sandboxInfo?.claudeAvailable && (
             <div className="flex items-center gap-1 mt-0.5">
               <Sparkles className="w-2.5 h-2.5 text-desktop-accent/70" />
-              <span className="text-white/30 text-[10px] font-mono">claude {sandboxInfo.claudeBin !== 'claude' ? sandboxInfo.claudeBin : 'v2.1.63'}</span>
+              <span className="text-white/30 text-[10px] font-mono">claude code</span>
             </div>
           )}
         </div>
@@ -488,7 +490,7 @@ export function WorkspaceApp() {
 
         {/* Command runner */}
         {selectedAgentId && selectedAgentId !== 'shared' && (
-          <CommandPanel agentId={selectedAgentId} />
+          <CommandPanel agentId={selectedAgentId} claudeAvailable={sandboxInfo?.claudeAvailable ?? false} />
         )}
       </div>
 
