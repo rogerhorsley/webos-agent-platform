@@ -14,6 +14,7 @@ import { workflowRoutes } from './routes/workflows'
 import { streamChat } from './services/claude'
 import { setupTerminalSocket } from './routes/terminal'
 import { workspaceRoutes } from './routes/workspaces'
+import { chatRoutes } from './routes/chat'
 import { ensureWorkspacesRoot } from './services/workspace'
 import { startWorker, setSocketIO, getQueueStats, closeQueue } from './services/taskQueue'
 import { teamRoutes } from './routes/teams'
@@ -114,6 +115,9 @@ async function main() {
                 activeAbort = null
                 socket.emit('chat:error', { agentId: targetAgentId, error: err.message })
               },
+              onToolUse: (toolUse) => {
+                socket.emit('chat:tool_use', { agentId: targetAgentId, ...toolUse })
+              },
             },
             signal
           )
@@ -185,6 +189,7 @@ async function main() {
   fastify.register(channelRoutes, { prefix: '/api/channels' })
   fastify.register(scheduledTaskRoutes, { prefix: '/api/scheduled-tasks' })
   fastify.register(workspaceRoutes, { prefix: '/api/workspaces' })
+  fastify.register(chatRoutes, { prefix: '/api/chat' })
 
   // Serve built frontend (production mode)
   const webDistPath = path.resolve(process.cwd(), '..', 'web', 'dist')
