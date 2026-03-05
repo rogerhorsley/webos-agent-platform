@@ -1,6 +1,50 @@
 import { useState } from 'react'
 import { Save, Eye, EyeOff, CheckCircle, Key, Info, ImageIcon } from 'lucide-react'
-import { useWallpaperStore, WALLPAPERS } from '../../stores/wallpaperStore'
+import { useWallpaperStore, WALLPAPERS, type Wallpaper } from '../../stores/wallpaperStore'
+
+function WallpaperThumb({
+  wp, activeId, onSelect,
+}: { wp: Wallpaper; activeId: string; onSelect: (id: string) => void }) {
+  const isActive = wp.id === activeId
+  const isLight = wp.theme === 'light'
+  return (
+    <button
+      onClick={() => onSelect(wp.id)}
+      className="group relative rounded-xl overflow-hidden transition-all"
+      style={{
+        aspectRatio: '16/9',
+        background: wp.preview,
+        border: isActive ? '2px solid #E84C6A' : isLight ? '2px solid rgba(0,0,0,0.10)' : '2px solid rgba(255,255,255,0.06)',
+        boxShadow: isActive
+          ? '0 0 0 1px rgba(232,76,106,0.3), 0 4px 16px rgba(0,0,0,0.3)'
+          : isLight ? '0 2px 8px rgba(0,0,0,0.12)' : '0 2px 8px rgba(0,0,0,0.3)',
+      }}
+    >
+      {/* Name label */}
+      <div
+        className="absolute bottom-0 left-0 right-0 px-2 py-1.5 text-center"
+        style={{
+          background: isLight ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)',
+          backdropFilter: 'blur(4px)',
+        }}
+      >
+        <span
+          className="text-[10px] font-medium"
+          style={{ color: isLight ? 'rgba(9,9,11,0.7)' : 'rgba(255,255,255,0.8)' }}
+        >
+          {wp.name}
+        </span>
+      </div>
+      {/* Active indicator */}
+      {isActive && (
+        <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-[#E84C6A] flex items-center justify-center">
+          <CheckCircle className="w-3 h-3 text-white" />
+        </div>
+      )}
+      <div className="absolute inset-0 bg-white/0 group-hover:bg-white/[0.06] transition-colors" />
+    </button>
+  )
+}
 
 export function SettingsApp() {
   const [apiKey, setApiKey] = useState(localStorage.getItem('anthropic_api_key') || '')
@@ -34,49 +78,25 @@ export function SettingsApp() {
             <ImageIcon className="w-3.5 h-3.5 text-desktop-accent" strokeWidth={1.75} />
             <span className="text-ink-2 text-xs font-medium">桌面壁纸</span>
           </div>
+          {/* Dark themes */}
+          <p className="text-ink-4 text-[11px] mb-1.5 flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-zinc-700" />
+            深色
+          </p>
+          <div className="grid grid-cols-3 gap-2.5 mb-4">
+            {WALLPAPERS.filter(wp => wp.theme === 'dark').map(wp => (
+              <WallpaperThumb key={wp.id} wp={wp} activeId={activeId} onSelect={setWallpaper} />
+            ))}
+          </div>
+          {/* Light themes */}
+          <p className="text-ink-4 text-[11px] mb-1.5 flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-zinc-200 border border-zinc-300" />
+            浅色
+          </p>
           <div className="grid grid-cols-3 gap-2.5">
-            {WALLPAPERS.map(wp => {
-              const isActive = wp.id === activeId
-              return (
-                <button
-                  key={wp.id}
-                  onClick={() => setWallpaper(wp.id)}
-                  className="group relative rounded-xl overflow-hidden transition-all"
-                  style={{
-                    aspectRatio: '16/9',
-                    background: wp.preview,
-                    border: isActive
-                      ? '2px solid #E84C6A'
-                      : '2px solid rgba(255,255,255,0.06)',
-                    boxShadow: isActive ? '0 0 0 1px rgba(232,76,106,0.3), 0 4px 16px rgba(0,0,0,0.4)' : '0 2px 8px rgba(0,0,0,0.3)',
-                  }}
-                >
-                  {/* Dot grid overlay preview */}
-                  <div
-                    className="absolute inset-0 opacity-[0.04]"
-                    style={{
-                      backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)',
-                      backgroundSize: '8px 8px',
-                    }}
-                  />
-                  {/* Name label */}
-                  <div
-                    className="absolute bottom-0 left-0 right-0 px-2 py-1.5 text-center"
-                    style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
-                  >
-                    <span className="text-[10px] font-medium text-white/80">{wp.name}</span>
-                  </div>
-                  {/* Active checkmark */}
-                  {isActive && (
-                    <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-[#E84C6A] flex items-center justify-center">
-                      <CheckCircle className="w-3 h-3 text-white" />
-                    </div>
-                  )}
-                  {/* Hover highlight */}
-                  <div className="absolute inset-0 bg-white/0 group-hover:bg-white/[0.05] transition-colors" />
-                </button>
-              )
-            })}
+            {WALLPAPERS.filter(wp => wp.theme === 'light').map(wp => (
+              <WallpaperThumb key={wp.id} wp={wp} activeId={activeId} onSelect={setWallpaper} />
+            ))}
           </div>
         </section>
 

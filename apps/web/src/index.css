@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── CSS Variables ─────────────────────────────────────────────────────── */
+/* ── CSS Variables (Dark — default) ─────────────────────────────────────── */
 :root {
   --bg:           #0C0C0E;
   --surface:      #18181B;
@@ -16,6 +16,119 @@
   --text-2:       #A1A1AA;
   --text-3:       #71717A;
   --text-4:       #52525B;
+
+  /* Component-level tokens */
+  --card-bg:          rgba(255, 255, 255, 0.03);
+  --card-hover-border: rgba(255, 255, 255, 0.10);
+  --input-bg:         rgba(255, 255, 255, 0.05);
+  --input-border:     rgba(255, 255, 255, 0.06);
+  --input-focus:      rgba(232, 76, 106, 0.5);
+  --overlay-bg:       rgba(0, 0, 0, 0.65);
+  --overlay-blur:     blur(4px);
+  --dock-glass:       rgba(20, 20, 24, 0.92);
+  --dock-border-top:  rgba(255, 255, 255, 0.08);
+  --dock-border-side: rgba(255, 255, 255, 0.05);
+  --dock-item-color:  rgba(255, 255, 255, 0.65);
+  --dock-item-hover:  rgba(255, 255, 255, 0.08);
+  --dock-item-hover-c:rgba(255, 255, 255, 0.9);
+  --dock-dot:         rgba(255, 255, 255, 0.5);
+  --window-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 32px 64px -8px rgba(0,0,0,0.75),
+    0 8px 24px rgba(0,0,0,0.4);
+  --sysbar-bg:        rgba(12, 12, 14, 0.85);
+  --sysbar-border:    rgba(255, 255, 255, 0.05);
+  --scrollbar-thumb:  rgba(255, 255, 255, 0.10);
+  --scrollbar-hover:  rgba(255, 255, 255, 0.18);
+  --selection-bg:     rgba(232, 76, 106, 0.25);
+  --btn-secondary-bg: rgba(255, 255, 255, 0.06);
+  --btn-secondary-border: rgba(255, 255, 255, 0.08);
+  --btn-secondary-color: var(--text-2);
+  --btn-secondary-hover: rgba(255, 255, 255, 0.10);
+
+  /* Widget tokens (dark) */
+  --widget-bg:            rgba(18, 18, 22, 0.72);
+  --widget-border:        rgba(255, 255, 255, 0.07);
+  --widget-shadow:        0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+  --widget-header-border: rgba(255, 255, 255, 0.05);
+  --widget-hover:         rgba(255, 255, 255, 0.04);
+  --widget-row-hover:     rgba(255, 255, 255, 0.03);
+  --widget-sep:           rgba(255, 255, 255, 0.06);
+  --widget-avatar-bg:     rgba(255, 255, 255, 0.08);
+  --widget-idle-dot:      rgba(255, 255, 255, 0.20);
+}
+
+/* ── CSS Variables (Light) ──────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:           #F0F0F5;
+  --surface:      #FFFFFF;
+  --dock-bg:      #EBEBF0;
+  --elevated:     #FFFFFF;
+  --border:       rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --accent:       #E84C6A;
+  --accent-muted: rgba(232, 76, 106, 0.10);
+  --text-1:       #09090B;
+  --text-2:       #52525B;
+  --text-3:       #A1A1AA;
+  --text-4:       #D4D4D8;
+
+  /* Component-level tokens */
+  --card-bg:          rgba(0, 0, 0, 0.025);
+  --card-hover-border: rgba(0, 0, 0, 0.12);
+  --input-bg:         rgba(0, 0, 0, 0.035);
+  --input-border:     rgba(0, 0, 0, 0.09);
+  --input-focus:      rgba(232, 76, 106, 0.45);
+  --overlay-bg:       rgba(0, 0, 0, 0.35);
+  --overlay-blur:     blur(6px);
+  --dock-glass:       rgba(228, 228, 236, 0.90);
+  --dock-border-top:  rgba(0, 0, 0, 0.08);
+  --dock-border-side: rgba(0, 0, 0, 0.04);
+  --dock-item-color:  rgba(0, 0, 0, 0.55);
+  --dock-item-hover:  rgba(0, 0, 0, 0.07);
+  --dock-item-hover-c:rgba(0, 0, 0, 0.85);
+  --dock-dot:         rgba(0, 0, 0, 0.35);
+  --window-shadow:
+    0 0 0 1px rgba(0,0,0,0.06),
+    0 2px 4px rgba(0,0,0,0.04),
+    0 16px 48px -8px rgba(0,0,0,0.14),
+    0 6px 16px rgba(0,0,0,0.06);
+  --sysbar-bg:        rgba(245, 245, 248, 0.88);
+  --sysbar-border:    rgba(0, 0, 0, 0.06);
+  --scrollbar-thumb:  rgba(0, 0, 0, 0.14);
+  --scrollbar-hover:  rgba(0, 0, 0, 0.22);
+  --selection-bg:     rgba(232, 76, 106, 0.20);
+  --btn-secondary-bg: rgba(0, 0, 0, 0.05);
+  --btn-secondary-border: rgba(0, 0, 0, 0.09);
+  --btn-secondary-color: var(--text-2);
+  --btn-secondary-hover: rgba(0, 0, 0, 0.08);
+
+  /* Widget tokens (light) */
+  --widget-bg:            rgba(255, 255, 255, 0.78);
+  --widget-border:        rgba(0, 0, 0, 0.07);
+  --widget-shadow:        0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --widget-header-border: rgba(0, 0, 0, 0.05);
+  --widget-hover:         rgba(0, 0, 0, 0.04);
+  --widget-row-hover:     rgba(0, 0, 0, 0.025);
+  --widget-sep:           rgba(0, 0, 0, 0.06);
+  --widget-avatar-bg:     rgba(0, 0, 0, 0.06);
+  --widget-idle-dot:      rgba(0, 0, 0, 0.20);
+}
+
+/* Light theme — body and scrollbars */
+[data-theme="light"] body {
+  color: var(--text-1);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+[data-theme="light"] ::selection {
+  background: var(--selection-bg);
+  color: var(--text-1);
 }
 
 /* ── Reset ─────────────────────────────────────────────────────────────── */
@@ -39,8 +152,8 @@ body {
 /* ── Scrollbar ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, rgba(255,255,255,0.10)); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover, rgba(255,255,255,0.18)); }
 
 /* ── Selection ──────────────────────────────────────────────────────────── */
 ::selection { background: rgba(232, 76, 106, 0.25); color: #FAFAFA; }
@@ -70,14 +183,8 @@ body {
   flex-direction: column;
   background: var(--surface);
   border-radius: 12px;
-  /* 精确协议边框 — 顶部内发光 + 整体深阴影 */
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.06),
-    0 0 0 1px rgba(255,255,255,0.04),
-    0 32px 64px -8px rgba(0,0,0,0.75),
-    0 8px 24px rgba(0,0,0,0.4);
+  box-shadow: var(--window-shadow);
   overflow: hidden;
-  /* 入场动画 */
   animation: windowAppear 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -121,16 +228,16 @@ body {
   justify-content: center;
   gap: 4px;
   padding: 8px 16px 12px;
-  background: rgba(20, 20, 24, 0.92);
+  background: var(--dock-glass);
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   border-radius: 16px 16px 0 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: 1px solid rgba(255, 255, 255, 0.05);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--dock-border-top);
+  border-left: 1px solid var(--dock-border-side);
+  border-right: 1px solid var(--dock-border-side);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 -8px 32px rgba(0, 0, 0, 0.4);
+    inset 0 1px 0 var(--dock-border-top),
+    0 -8px 32px rgba(0, 0, 0, 0.2);
   z-index: 9000;
 }
 
@@ -146,12 +253,12 @@ body {
   border: none;
   cursor: pointer;
   transition: background 0.12s ease, transform 0.12s ease;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--dock-item-color);
 }
 
 .dock-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.9);
+  background: var(--dock-item-hover);
+  color: var(--dock-item-hover-c);
   transform: scale(1.08);
 }
 
@@ -169,7 +276,7 @@ body {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--dock-dot);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -187,20 +294,20 @@ body {
 
 /* 标准卡片 */
 .app-card {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
   transition: border-color 0.12s ease;
 }
-.app-card:hover { border-color: rgba(255, 255, 255, 0.10); }
+.app-card:hover { border-color: var(--card-hover-border); }
 
 /* 标准输入框 */
 .app-input {
   width: 100%;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 8px;
   color: var(--text-1);
   font-size: 13px;
@@ -209,7 +316,7 @@ body {
   outline: none;
 }
 .app-input::placeholder { color: var(--text-4); }
-.app-input:focus { border-color: rgba(232, 76, 106, 0.5); }
+.app-input:focus { border-color: var(--input-focus); }
 
 /* 主按钮 */
 .btn-primary {
@@ -237,17 +344,17 @@ body {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-2);
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-color);
   font-size: 13px;
   font-weight: 500;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--btn-secondary-border);
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
   line-height: 1;
 }
-.btn-secondary:hover { background: rgba(255,255,255,0.10); color: var(--text-1); }
+.btn-secondary:hover { background: var(--btn-secondary-hover); color: var(--text-1); }
 
 /* 标签/徽章 */
 .badge {
@@ -264,8 +371,8 @@ body {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(4px);
+  background: var(--overlay-bg);
+  backdrop-filter: var(--overlay-blur);
   z-index: 9999;
   display: flex;
   align-items: center;

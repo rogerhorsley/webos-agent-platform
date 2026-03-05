@@ -40,9 +40,9 @@ export function Desktop() {
       {/* System bar */}
       <div className="absolute top-0 left-0 right-0 h-9 flex items-center px-4"
         style={{
-          background: 'rgba(12,12,14,0.85)',
+          background: 'var(--sysbar-bg)',
           backdropFilter: 'blur(20px)',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          borderBottom: '1px solid var(--sysbar-border)',
           zIndex: 9000,
         }}
       >
