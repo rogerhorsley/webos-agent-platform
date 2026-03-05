@@ -150,3 +150,52 @@ export const mcpApi = {
   callTool: (name: string, args: any) =>
     request<any>(`/api/mcp/tools/${name}/call`, { method: 'POST', body: JSON.stringify({ args }) }),
 }
+
+// Notes
+export const notesApi = {
+  list: (agentId?: string) => request<any[]>(`/api/notes${agentId ? `?agentId=${agentId}` : ''}`),
+  get: (id: string) => request<any>(`/api/notes/${id}`),
+  create: (body: any) => request<any>('/api/notes', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: any) => request<any>(`/api/notes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: (id: string) => request<void>(`/api/notes/${id}`, { method: 'DELETE' }),
+}
+
+// Browser
+export const browserApi = {
+  createSession: () => request<{ sessionId: string }>('/api/browser/session', { method: 'POST' }),
+  navigate: (sessionId: string, url: string) =>
+    request<{ screenshot: string; title: string; url: string }>('/api/browser/navigate', { method: 'POST', body: JSON.stringify({ sessionId, url }) }),
+  click: (sessionId: string, x: number, y: number) =>
+    request<{ screenshot: string; title: string; url: string }>('/api/browser/click', { method: 'POST', body: JSON.stringify({ sessionId, x, y }) }),
+  type: (sessionId: string, text: string) =>
+    request<{ screenshot: string }>('/api/browser/type', { method: 'POST', body: JSON.stringify({ sessionId, text }) }),
+  keyPress: (sessionId: string, key: string) =>
+    request<{ screenshot: string }>('/api/browser/key', { method: 'POST', body: JSON.stringify({ sessionId, key }) }),
+  screenshot: (sessionId: string) =>
+    request<{ screenshot: string; title: string; url: string }>('/api/browser/screenshot', { method: 'POST', body: JSON.stringify({ sessionId }) }),
+  back: (sessionId: string) =>
+    request<{ screenshot: string; title: string; url: string }>('/api/browser/back', { method: 'POST', body: JSON.stringify({ sessionId }) }),
+  forward: (sessionId: string) =>
+    request<{ screenshot: string; title: string; url: string }>('/api/browser/forward', { method: 'POST', body: JSON.stringify({ sessionId }) }),
+  refresh: (sessionId: string) =>
+    request<{ screenshot: string; title: string; url: string }>('/api/browser/refresh', { method: 'POST', body: JSON.stringify({ sessionId }) }),
+  closeSession: (sessionId: string) => request<void>(`/api/browser/${sessionId}`, { method: 'DELETE' }),
+}
+
+// Mail
+export const mailApi = {
+  listAccounts: () => request<any[]>('/api/mail/accounts'),
+  getAccount: (id: string) => request<any>(`/api/mail/accounts/${id}`),
+  createAccount: (body: any) => request<any>('/api/mail/accounts', { method: 'POST', body: JSON.stringify(body) }),
+  updateAccount: (id: string, body: any) => request<any>(`/api/mail/accounts/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteAccount: (id: string) => request<void>(`/api/mail/accounts/${id}`, { method: 'DELETE' }),
+  fetchInbox: (accountId: string, limit?: number) =>
+    request<any[]>(`/api/mail/accounts/${accountId}/inbox${limit ? `?limit=${limit}` : ''}`),
+  listMessages: (accountId: string, folder?: string) =>
+    request<any[]>(`/api/mail/accounts/${accountId}/messages${folder ? `?folder=${folder}` : ''}`),
+  getMessageBody: (msgId: string) => request<{ text: string; html: string }>(`/api/mail/messages/${msgId}/body`),
+  sendMail: (accountId: string, body: { to: string; subject: string; body: string }) =>
+    request<{ success: boolean }>(`/api/mail/accounts/${accountId}/send`, { method: 'POST', body: JSON.stringify(body) }),
+  markRead: (msgId: string) => request<any>(`/api/mail/messages/${msgId}/read`, { method: 'PUT' }),
+  deleteMessage: (msgId: string) => request<void>(`/api/mail/messages/${msgId}`, { method: 'DELETE' }),
+}

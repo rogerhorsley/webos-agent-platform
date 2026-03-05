@@ -1,12 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   Send, Bot, User, ChevronDown, Loader2, AlertCircle, Sparkles,
   Paperclip, X, Image as ImageIcon, FileText, Volume2, Video, Square, CheckCircle2, Play,
-  Plus, MessageSquare, Trash2, Wrench,
+  Plus, MessageSquare, Trash2, Wrench, PanelRightOpen, PanelRightClose,
 } from 'lucide-react'
 import { getSocket } from '../../lib/socket'
 import { useAgents } from '../../hooks/useAgents'
 import { MessageContent } from '../chat/MessageContent'
+import { ArtifactPreview, extractArtifacts } from '../chat/ArtifactPreview'
 import { tasksApi, teamsApi, chatsApi } from '../../lib/api'
 import { useChats, useCreateChat, useDeleteChat } from '../../hooks/useChats'
 import { useBadgeStore } from '../../stores/badgeStore'
@@ -54,7 +55,7 @@ interface DispatchDirective {
 
 // ─── Attachment thumbnail ─────────────────────────────────────────────────────
 
-function AttachmentPreview({ att, onRemove }: { att: Attachment; onRemove?: () => void }) {
+function AttachmentPreviewThumb({ att, onRemove }: { att: Attachment; onRemove?: () => void }) {
   const icon = att.type === 'image' ? <ImageIcon className="w-3.5 h-3.5" />
     : att.type === 'audio' ? <Volume2 className="w-3.5 h-3.5" />
     : att.type === 'video' ? <Video className="w-3.5 h-3.5" />
@@ -124,6 +125,7 @@ export function ChatApp() {
   const [selectedAgentId, setSelectedAgentId] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const streamingIdRef = useRef<string | null>(null)
@@ -142,6 +144,18 @@ export function ChatApp() {
   const activeWindowId = useWindowStore(s => s.activeWindowId)
   const isChatFocused = activeWindowId === 'chat'
 
+  // ── Artifact preview ────────────────────────────────────────────────────────
+  const latestAssistantContent = useMemo(() => {
+    const assistantMsgs = messages.filter(m => m.role === 'assistant' && m.content)
+    return assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1].content : ''
+  }, [messages])
+
+  const currentArtifacts = useMemo(() => extractArtifacts(latestAssistantContent), [latestAssistantContent])
+
+  useEffect(() => {
+    if (currentArtifacts.length > 0 && !showPreview) setShowPreview(true)
+  }, [currentArtifacts.length])
+
   useEffect(() => {
     if (isChatFocused) resetChatUnread()
   }, [isChatFocused, resetChatUnread])
@@ -154,7 +168,6 @@ export function ChatApp() {
 
   const welcomeCreatedRef = useRef(false)
 
-  // Load last active session on mount; create welcome session if first time
   useEffect(() => {
     if (sessionsLoading || activeSessionId) return
     if (sessions.length > 0) {
@@ -167,11 +180,7 @@ export function ChatApp() {
           const welcomeContent = '你好！我是 NexusCore，你的 AI 工作助手。我可以帮你分配任务给专属 Agent、协调多 Agent 团队协作、构建自动化工作流。试着说：帮我写一份产品介绍，或者 用研究团队分析竞品'
           await chatsApi.addMessage(session.id, { role: 'assistant', content: welcomeContent })
           setActiveSessionId(session.id)
-          setMessages([{
-            id: 'welcome',
-            role: 'assistant',
-            content: welcomeContent,
-          }])
+          setMessages([{ id: 'welcome', role: 'assistant', content: welcomeContent }])
           createChat.reset()
         } catch {}
       })()
@@ -180,16 +189,13 @@ export function ChatApp() {
 
   const loadSession = useCallback(async (sessionId: string) => {
     setActiveSessionId(sessionId)
+    setShowPreview(false)
     try {
       const msgs = await chatsApi.getMessages(sessionId)
       const sorted = [...msgs].sort((a: any, b: any) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       )
-      setMessages(sorted.map((m: any) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-      })))
+      setMessages(sorted.map((m: any) => ({ id: m.id, role: m.role, content: m.content })))
     } catch {
       setMessages([])
     }
@@ -199,6 +205,7 @@ export function ChatApp() {
     const session = await createChat.mutateAsync({ agentId: selectedAgentId || undefined })
     setActiveSessionId(session.id)
     setMessages([])
+    setShowPreview(false)
   }, [createChat, selectedAgentId])
 
   const handleDeleteSession = useCallback(async (id: string) => {
@@ -221,9 +228,7 @@ export function ChatApp() {
   }, [input])
 
   const persistMessage = useCallback(async (sessionId: string, role: string, content: string) => {
-    try {
-      await chatsApi.addMessage(sessionId, { role, content })
-    } catch {}
+    try { await chatsApi.addMessage(sessionId, { role, content }) } catch {}
   }, [])
 
   // Socket events
@@ -303,7 +308,6 @@ export function ChatApp() {
     }
   }, [isChatFocused])
 
-  // Subscribe to task:done for dispatch follow-ups
   useEffect(() => {
     const socket = getSocket()
     const onTaskDone = (data: { taskId: string; output: string; taskName: string }) => {
@@ -340,9 +344,7 @@ export function ChatApp() {
           priority: 'medium',
         })
         setMessages(prev => prev.map(m =>
-          m.id === messageId
-            ? { ...m, dispatchTaskId: teamRun.taskId }
-            : m
+          m.id === messageId ? { ...m, dispatchTaskId: teamRun.taskId } : m
         ))
         return
       }
@@ -353,22 +355,16 @@ export function ChatApp() {
         type: 'chat',
         priority: 'medium',
         agentId: dispatch.target.id,
-        input: {
-          prompt: [dispatch.task.prompt, dispatch.task.context].filter(Boolean).join('\n\n'),
-        },
+        input: { prompt: [dispatch.task.prompt, dispatch.task.context].filter(Boolean).join('\n\n') },
       })
       await tasksApi.start(created.id)
 
       setMessages(prev => prev.map(m =>
-        m.id === messageId
-          ? { ...m, dispatchTaskId: created.id }
-          : m
+        m.id === messageId ? { ...m, dispatchTaskId: created.id } : m
       ))
     } catch (err: any) {
       setMessages(prev => prev.map(m =>
-        m.id === messageId
-          ? { ...m, dispatchState: 'failed', dispatchError: err.message || 'Dispatch failed' }
-          : m
+        m.id === messageId ? { ...m, dispatchState: 'failed', dispatchError: err.message || 'Dispatch failed' } : m
       ))
     }
   }, [])
@@ -385,14 +381,13 @@ export function ChatApp() {
   const addFiles = useCallback((files: FileList | File[]) => {
     Array.from(files).forEach(file => {
       const url = URL.createObjectURL(file)
-      const att: Attachment = {
+      setAttachments(prev => [...prev, {
         id: Math.random().toString(36).slice(2),
         type: classifyFile(file),
         name: file.name,
         url,
         mimeType: file.type,
-      }
-      setAttachments(prev => [...prev, att])
+      }])
     })
   }, [])
 
@@ -433,20 +428,9 @@ export function ChatApp() {
       else userContent += `\n\n[${att.name}](${att.url})`
     })
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: userContent,
-      attachments: [...attachments],
-    }
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: userContent, attachments: [...attachments] }
     const assistantId = (Date.now() + 1).toString()
-    const assistantMsg: Message = {
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      agentId: selectedAgentId,
-      streaming: true,
-    }
+    const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', agentId: selectedAgentId, streaming: true }
     const history = [...messages, userMsg]
     setMessages([...history, assistantMsg])
     setInput('')
@@ -470,6 +454,27 @@ export function ChatApp() {
     const socket = getSocket()
     socket.emit('chat:stop')
   }, [])
+
+  const sendEditPrompt = useCallback((prompt: string) => {
+    if (isStreaming) return
+    setError(null)
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: prompt }
+    const assistantId = (Date.now() + 1).toString()
+    const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '', agentId: selectedAgentId, streaming: true }
+    const history = [...messages, userMsg]
+    setMessages([...history, assistantMsg])
+    setIsStreaming(true)
+    streamingIdRef.current = assistantId
+    if (activeSessionId) persistMessage(activeSessionId, 'user', prompt)
+    const socket = getSocket()
+    socket.emit('chat:message', {
+      agentId: selectedAgentId || undefined,
+      messages: history.map(m => ({ role: m.role, content: m.content })),
+      systemPrompt: selectedAgent?.systemPrompt,
+      model: selectedAgent?.config?.model,
+      dispatchMode,
+    })
+  }, [isStreaming, messages, selectedAgentId, selectedAgent, dispatchMode, activeSessionId, persistMessage])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -518,8 +523,8 @@ export function ChatApp() {
         </div>
       </div>
 
-      {/* Right — chat area */}
-      <div className="flex-1 flex flex-col gap-3 p-3 min-w-0">
+      {/* Middle — chat area */}
+      <div className={`flex-1 flex flex-col gap-3 p-3 min-w-0 ${showPreview && currentArtifacts.length > 0 ? 'border-r border-white/10' : ''}`}>
         {/* Agent selector */}
         <div className="flex items-center gap-2 pb-3 border-b border-white/[0.06] flex-shrink-0">
           <Sparkles className="w-3.5 h-3.5 text-desktop-accent flex-shrink-0" strokeWidth={1.75} />
@@ -541,6 +546,12 @@ export function ChatApp() {
           )}
           {selectedAgentId === 'nexus-core' && (
             <span className="badge text-[10px] text-emerald-300 bg-emerald-500/10 border-emerald-500/20">主助手</span>
+          )}
+          {currentArtifacts.length > 0 && (
+            <button onClick={() => setShowPreview(p => !p)}
+              className="ml-auto p-1.5 hover:bg-white/5 rounded-lg transition-colors" title={showPreview ? '隐藏预览' : '显示预览'}>
+              {showPreview ? <PanelRightClose className="w-3.5 h-3.5 text-desktop-accent" /> : <PanelRightOpen className="w-3.5 h-3.5 text-ink-3" />}
+            </button>
           )}
         </div>
 
@@ -597,53 +608,36 @@ export function ChatApp() {
                 )}
 
                 {message.dispatch && (
-                  <div
-                    className="mt-2.5 rounded-lg p-2.5 space-y-1.5"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                  >
+                  <div className="mt-2.5 rounded-lg p-2.5 space-y-1.5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
                     <div className="text-[11px] text-ink-3">
-                      派活目标：
-                      <span className="text-ink-2 ml-1 font-medium">
-                        {message.dispatch.target.type === 'team' ? 'Team' : 'Agent'} · {message.dispatch.target.id}
-                      </span>
+                      派活目标：<span className="text-ink-2 ml-1 font-medium">{message.dispatch.target.type === 'team' ? 'Team' : 'Agent'} · {message.dispatch.target.id}</span>
                     </div>
                     <div className="text-[11px] text-ink-4">{message.dispatch.task.name}</div>
-                    {message.dispatch.reason ? (
-                      <div className="text-[11px] text-ink-4 leading-relaxed">{message.dispatch.reason}</div>
-                    ) : null}
-
+                    {message.dispatch.reason && <div className="text-[11px] text-ink-4 leading-relaxed">{message.dispatch.reason}</div>}
                     <div className="flex items-center gap-2 pt-1">
-                      {message.dispatchState === 'idle' ? (
-                        <button
-                          onClick={() => executeDispatch(message.dispatch!, message.id)}
+                      {message.dispatchState === 'idle' && (
+                        <button onClick={() => executeDispatch(message.dispatch!, message.id)}
                           className="flex items-center gap-1.5 px-2 py-1 rounded text-[11px] text-state-success"
-                          style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.25)' }}
-                        >
+                          style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.25)' }}>
                           <Play className="w-3 h-3" /> 确认执行
                         </button>
-                      ) : null}
-                      {message.dispatchState === 'running' ? (
-                        <span className="flex items-center gap-1 text-[11px] text-state-info">
-                          <Loader2 className="w-3 h-3 animate-spin" /> 执行中...
-                        </span>
-                      ) : null}
-                      {message.dispatchState === 'completed' ? (
-                        <span className="flex items-center gap-1 text-[11px] text-state-success">
-                          <CheckCircle2 className="w-3 h-3" /> 已创建任务 {message.dispatchTaskId?.slice(0, 8)}
-                        </span>
-                      ) : null}
-                      {message.dispatchState === 'failed' ? (
+                      )}
+                      {message.dispatchState === 'running' && (
+                        <span className="flex items-center gap-1 text-[11px] text-state-info"><Loader2 className="w-3 h-3 animate-spin" /> 执行中...</span>
+                      )}
+                      {message.dispatchState === 'completed' && (
+                        <span className="flex items-center gap-1 text-[11px] text-state-success"><CheckCircle2 className="w-3 h-3" /> 已创建任务 {message.dispatchTaskId?.slice(0, 8)}</span>
+                      )}
+                      {message.dispatchState === 'failed' && (
                         <span className="text-[11px] text-state-error">执行失败：{message.dispatchError}</span>
-                      ) : null}
+                      )}
                     </div>
                   </div>
                 )}
 
                 {message.toolUses && message.toolUses.length > 0 && (
                   <div className="space-y-1">
-                    {message.toolUses.map(tu => (
-                      <ToolUseCard key={tu.id} toolUse={tu} />
-                    ))}
+                    {message.toolUses.map(tu => <ToolUseCard key={tu.id} toolUse={tu} />)}
                   </div>
                 )}
               </div>
@@ -654,12 +648,9 @@ export function ChatApp() {
 
         {/* Error */}
         {error && (
-          <div
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-state-error text-xs flex-shrink-0 animate-slideUp cursor-pointer"
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-state-error text-xs flex-shrink-0 animate-slideUp cursor-pointer"
             style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)' }}
-            onClick={() => setError(null)}
-            title="点击关闭"
-          >
+            onClick={() => setError(null)} title="点击关闭">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="flex-1">{error}</span>
             <X className="w-3 h-3 flex-shrink-0 opacity-50 hover:opacity-100" />
@@ -669,67 +660,54 @@ export function ChatApp() {
         {/* Attachment previews */}
         {attachments.length > 0 && (
           <div className="flex gap-2 flex-wrap flex-shrink-0">
-            {attachments.map(att => (
-              <AttachmentPreview key={att.id} att={att} onRemove={() => removeAttachment(att.id)} />
-            ))}
+            {attachments.map(att => <AttachmentPreviewThumb key={att.id} att={att} onRemove={() => removeAttachment(att.id)} />)}
           </div>
         )}
 
         {/* Input row */}
-        <div
-          className="flex gap-2 flex-shrink-0 items-end rounded-xl p-1.5"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-        >
-          <button
-            onClick={() => fileInputRef.current?.click()}
+        <div className="flex gap-2 flex-shrink-0 items-end rounded-xl p-1.5"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <button onClick={() => fileInputRef.current?.click()}
             className="p-1.5 rounded-lg text-ink-4 hover:text-ink-2 hover:bg-white/5 transition-colors flex-shrink-0"
-            title="附加文件 (图片/视频/音频)"
-            disabled={isStreaming}
-          >
+            title="附加文件" disabled={isStreaming}>
             <Paperclip className="w-4 h-4" />
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*,audio/*,video/*"
-            className="hidden"
-            onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = '' }}
-          />
+          <input ref={fileInputRef} type="file" multiple accept="image/*,audio/*,video/*" className="hidden"
+            onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = '' }} />
 
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
+          <textarea ref={textareaRef} value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
             onPaste={handlePaste}
             placeholder={isStreaming ? '生成中… (点击 ■ 停止)' : '输入消息… (Enter 发送，Shift+Enter 换行，可粘贴图片)'}
-            disabled={isStreaming}
-            rows={1}
+            disabled={isStreaming} rows={1}
             className="flex-1 resize-none bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none disabled:opacity-40 py-1 px-1"
-            style={{ minHeight: '30px', maxHeight: '120px' }}
-          />
+            style={{ minHeight: '30px', maxHeight: '120px' }} />
 
           {isStreaming ? (
-            <button
-              onClick={handleStop}
-              className="p-2 flex-shrink-0 rounded-lg text-white transition-colors"
-              style={{ background: 'rgba(248,113,113,0.2)', border: '1px solid rgba(248,113,113,0.35)' }}
-              title="停止生成"
-            >
+            <button onClick={handleStop} className="p-2 flex-shrink-0 rounded-lg text-white transition-colors"
+              style={{ background: 'rgba(248,113,113,0.2)', border: '1px solid rgba(248,113,113,0.35)' }} title="停止生成">
               <Square className="w-4 h-4 text-red-400 fill-red-400" />
             </button>
           ) : (
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() && attachments.length === 0}
-              className="btn-primary p-2 flex-shrink-0 disabled:opacity-40 rounded-lg"
-            >
+            <button onClick={handleSend} disabled={!input.trim() && attachments.length === 0}
+              className="btn-primary p-2 flex-shrink-0 disabled:opacity-40 rounded-lg">
               <Send className="w-4 h-4" />
             </button>
           )}
         </div>
       </div>
+
+      {/* Right — artifact preview panel */}
+      {showPreview && currentArtifacts.length > 0 && (
+        <div className="w-2/5 h-full flex-shrink-0">
+          <ArtifactPreview
+            artifacts={currentArtifacts}
+            streaming={isStreaming}
+            onClose={() => setShowPreview(false)}
+            onEditSave={(prompt) => sendEditPrompt(prompt)}
+          />
+        </div>
+      )}
     </div>
   )
 }

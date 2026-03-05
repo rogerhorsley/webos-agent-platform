@@ -13,6 +13,9 @@ import { TerminalApp } from './apps/TerminalApp'
 import { SettingsApp } from './apps/SettingsApp'
 import { WorkspaceApp } from './apps/WorkspaceApp'
 import { ChannelsApp } from './apps/ChannelsApp'
+import { NoteApp } from './apps/NoteApp'
+import { BrowserApp } from './apps/BrowserApp'
+import { MailApp } from './apps/MailApp'
 import { PlaceholderApp } from './apps/PlaceholderApp'
 
 const appComponents: Record<string, React.ComponentType> = {
@@ -26,6 +29,9 @@ const appComponents: Record<string, React.ComponentType> = {
   Settings: SettingsApp,
   Workspace: WorkspaceApp,
   Channels: ChannelsApp,
+  Notes: NoteApp,
+  Browser: BrowserApp,
+  Mail: MailApp,
 }
 
 interface WindowProps {
