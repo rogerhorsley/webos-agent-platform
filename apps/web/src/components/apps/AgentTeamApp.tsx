@@ -10,7 +10,15 @@ import { agentsApi } from '../../lib/api'
 import { useToastStore } from '../../stores/toastStore'
 
 const ROLES = ['developer', 'designer', 'researcher', 'coordinator', 'custom'] as const
-const MODELS = ['claude-sonnet-4-5', 'claude-haiku-3-5', 'claude-opus-4-5']
+const MODELS = ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5']
+
+const ROLE_EMOJI: Record<string, string> = {
+  developer: '👨‍💻',
+  designer: '🎨',
+  researcher: '🔬',
+  coordinator: '🧠',
+  custom: '🤖',
+}
 const TEAM_MODES = ['sequential', 'parallel', 'hierarchical'] as const
 
 const TEAM_MODE_STYLES: Record<string, string> = {
@@ -49,7 +57,13 @@ const defaultTeamForm: TeamFormData = {
 
 function StatusDot({ status }: { status: string }) {
   const cls = status === 'running' ? 'bg-state-success' : status === 'error' ? 'bg-state-error' : 'bg-white/20'
-  return <span className={`w-1.5 h-1.5 rounded-full ${cls} flex-shrink-0`} />
+  return (
+    <span className={`relative w-1.5 h-1.5 rounded-full ${cls} flex-shrink-0`}>
+      {status === 'running' && (
+        <span className="absolute inset-0 rounded-full bg-state-success/50 animate-ping" />
+      )}
+    </span>
+  )
 }
 
 interface AgentModalProps { initial?: any; onClose: () => void; onSave: (d: AgentFormData) => void; saving: boolean }
@@ -395,8 +409,8 @@ export function AgentTeamApp() {
             {agents.map((agent: any) => (
               <div key={agent.id} className="app-card group flex flex-col gap-2.5">
                 <div className="flex items-start gap-2.5">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(232,76,106,0.12)' }}>
-                    <Bot className="w-4 h-4 text-desktop-accent" strokeWidth={1.75} />
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-base" style={{ background: 'rgba(232,76,106,0.12)' }}>
+                    {ROLE_EMOJI[agent.role] || '🤖'}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-ink-1 text-sm font-medium truncate">{agent.name}</p>

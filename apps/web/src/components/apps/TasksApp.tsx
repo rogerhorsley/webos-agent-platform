@@ -5,6 +5,9 @@ import { useAgents } from '../../hooks/useAgents'
 import { getSocket } from '../../lib/socket'
 import { useTeams } from '../../hooks/useTeams'
 import { useBadgeStore } from '../../stores/badgeStore'
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
+import { useQueryClient } from '@tanstack/react-query'
+import { tasksApi } from '../../lib/api'
 
 const PRIORITY_STYLES: Record<string, string> = {
   urgent: 'text-state-error bg-state-error/10 border-state-error/25',
@@ -325,8 +328,27 @@ export function TasksApp() {
   const [showModal, setShowModal] = useState(false)
   const [teamRunTask, setTeamRunTask] = useState<any | null>(null)
   const [selectedTask, setSelectedTask] = useState<any | null>(null)
+  const queryClient = useQueryClient()
 
   const setTaskRunningCount = useBadgeStore(s => s.setTaskRunningCount)
+
+  const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination) return
+    const newStatus = result.destination.droppableId
+    const taskId = result.draggableId
+    const task = tasks.find((t: any) => t.id === taskId)
+    if (!task || (task as any).status === newStatus) return
+
+    try {
+      const updateData: Record<string, any> = { status: newStatus }
+      if (newStatus === 'completed') updateData.completedAt = new Date().toISOString()
+      if (newStatus === 'running') updateData.startedAt = new Date().toISOString()
+      await tasksApi.update(taskId, updateData)
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    } catch (err) {
+      console.error('Failed to update task status:', err)
+    }
+  }
 
   const grouped = COLUMNS.reduce((acc, col) => {
     acc[col.key] = tasks.filter((t: any) => col.key === 'completed' ? ['completed','failed','cancelled'].includes(t.status) : t.status === col.key)
@@ -371,45 +393,73 @@ export function TasksApp() {
         )}
 
         {!isLoading && !allEmpty && (
-          <div className="flex-1 overflow-hidden grid grid-cols-4 gap-3 min-h-0">
-            {COLUMNS.map(({ key, label, Icon, color }) => {
-              const items = grouped[key] || []
-              return (
-                <div key={key} className="flex flex-col min-h-0">
-                  <div className="flex items-center gap-1.5 mb-2.5">
-                    <Icon className={`w-3.5 h-3.5 ${color}`} strokeWidth={1.75} />
-                    <span className="text-ink-2 text-xs font-medium">{label}</span>
-                    <span className="ml-auto text-ink-4 text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.04)' }}>{items.length}</span>
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <div className="flex-1 overflow-hidden grid grid-cols-4 gap-3 min-h-0">
+              {COLUMNS.map(({ key, label, Icon, color }) => {
+                const items = grouped[key] || []
+                return (
+                  <Droppable droppableId={key} key={key}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`flex flex-col min-h-0 rounded-xl transition-colors ${snapshot.isDraggingOver ? 'bg-white/[0.02]' : ''}`}
+                      >
+                        <div className="flex items-center gap-1.5 mb-2.5">
+                          <Icon className={`w-3.5 h-3.5 ${color}`} strokeWidth={1.75} />
+                          <span className="text-ink-2 text-xs font-medium">{label}</span>
+                          <span className="ml-auto text-ink-4 text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.04)' }}>{items.length}</span>
+                        </div>
+                        <div className="flex-1 overflow-auto space-y-2">
+                          {items.map((task: any, index: number) => (
+                            <Draggable key={task.id} draggableId={task.id} index={index}>
+                              {(provided, snapshot) => (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  style={{
+                                    ...provided.draggableProps.style,
+                                    opacity: snapshot.isDragging ? 0.8 : 1,
+                                  }}
+                                >
+                                  <TaskCard
+                                    task={task}
+                                    onStart={(id: string) => startTask.mutate(id)}
+                                    onCancel={(id: string) => cancelTask.mutate(id)}
+                                    onDelete={(id: string) => { if (selectedTask?.id === id) setSelectedTask(null); deleteTask.mutate(id) }}
+                                    onOpenTeamRun={(t: any) => setTeamRunTask(t)}
+                                    onSelect={(t: any) => setSelectedTask(t)}
+                                  />
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                          {items.length === 0 && !snapshot.isDraggingOver && (
+                            <div className="text-center text-ink-disabled text-xs py-5">Empty</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </Droppable>
+                )
+              })}
+              <div className="min-h-0">
+                {teamRunTask?.teamId ? (
+                  <TeamRunPanel
+                    taskId={teamRunTask.id}
+                    teamId={teamRunTask.teamId}
+                    onClose={() => setTeamRunTask(null)}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-ink-4 text-xs border border-white/10 rounded-xl">
+                    Drag tasks between columns to update status
                   </div>
-                  <div className="flex-1 overflow-auto space-y-2">
-                    {items.map((task: any) => (
-                      <TaskCard key={task.id} task={task}
-                        onStart={(id: string) => startTask.mutate(id)}
-                        onCancel={(id: string) => cancelTask.mutate(id)}
-                        onDelete={(id: string) => { if (selectedTask?.id === id) setSelectedTask(null); deleteTask.mutate(id) }}
-                        onOpenTeamRun={(t: any) => setTeamRunTask(t)}
-                        onSelect={(t: any) => setSelectedTask(t)}
-                      />
-                    ))}
-                    {items.length === 0 && <div className="text-center text-ink-disabled text-xs py-5">Empty</div>}
-                  </div>
-                </div>
-              )
-            })}
-            <div className="min-h-0">
-              {teamRunTask?.teamId ? (
-                <TeamRunPanel
-                  taskId={teamRunTask.id}
-                  teamId={teamRunTask.teamId}
-                  onClose={() => setTeamRunTask(null)}
-                />
-              ) : (
-                <div className="h-full flex items-center justify-center text-ink-4 text-xs border border-white/10 rounded-xl">
-                  选择 Team 任务查看协作时间线
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          </DragDropContext>
         )}
 
         {showModal && (
