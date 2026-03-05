@@ -1,12 +1,7 @@
-import OpenAI from 'openai'
+import Anthropic from '@anthropic-ai/sdk'
 
-const client = new OpenAI({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
-  defaultHeaders: {
-    'HTTP-Referer': 'https://nexusos.app',
-    'X-Title': 'NexusOS',
-  },
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
 })
 
 export interface ChatMessage {
@@ -14,29 +9,37 @@ export interface ChatMessage {
   content: string
 }
 
+export interface ToolUseBlock {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
 export interface StreamCallbacks {
   onToken: (token: string) => void
   onDone: (fullText: string) => void
   onError: (error: Error) => void
+  onToolUse?: (toolUse: ToolUseBlock) => void
 }
 
-// OpenRouter model name for Claude
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-4-5'
+const DEFAULT_MODEL = 'claude-sonnet-4-5-20250514'
 
 function resolveModel(model?: string): string {
   if (!model) return DEFAULT_MODEL
-  // If already has a provider prefix (e.g. "anthropic/..."), use as-is
-  if (model.includes('/')) return model
-  // Map bare Claude model names to OpenRouter format
   const modelMap: Record<string, string> = {
-    'claude-sonnet-4-5': 'anthropic/claude-sonnet-4-5',
-    'claude-opus-4-5': 'anthropic/claude-opus-4-5',
-    'claude-haiku-3-5': 'anthropic/claude-haiku-3-5',
-    'claude-3-5-sonnet-20241022': 'anthropic/claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku-20241022': 'anthropic/claude-3-5-haiku-20241022',
-    'claude-3-opus-20240229': 'anthropic/claude-3-opus-20240229',
+    'claude-sonnet-4-6': 'claude-sonnet-4-6-20260301',
+    'claude-opus-4-6': 'claude-opus-4-6-20260301',
+    'claude-sonnet-4-5': 'claude-sonnet-4-5-20250514',
+    'claude-opus-4-5': 'claude-opus-4-5-20250514',
+    'claude-haiku-4-5': 'claude-haiku-4-5-20250514',
+    'claude-3-5-sonnet-20241022': 'claude-3-5-sonnet-20241022',
+    'claude-3-5-haiku-20241022': 'claude-3-5-haiku-20241022',
+    'claude-3-opus-20240229': 'claude-3-opus-20240229',
   }
-  return modelMap[model] ?? `anthropic/${model}`
+  // Strip provider prefix if present
+  const bare = model.includes('/') ? model.split('/').pop()! : model
+  return modelMap[bare] ?? bare
 }
 
 export async function streamChat(
@@ -56,41 +59,55 @@ export async function streamChat(
   let fullText = ''
 
   try {
-    const systemMessages: OpenAI.Chat.ChatCompletionMessageParam[] = systemPrompt
-      ? [{ role: 'system', content: systemPrompt }]
-      : []
-
-    const stream = await client.chat.completions.create(
+    const stream = client.messages.stream(
       {
         model: resolveModel(model),
         max_tokens: 4096,
-        messages: [
-          ...systemMessages,
-          ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-        ],
-        stream: true,
+        system: systemPrompt || undefined,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
       },
       { signal }
     )
 
-    for await (const chunk of stream) {
-      if (signal?.aborted) break
-      const token = chunk.choices[0]?.delta?.content ?? ''
-      if (token) {
-        fullText += token
-        callbacks?.onToken(token)
+    stream.on('text', (text) => {
+      if (signal?.aborted) return
+      fullText += text
+      callbacks?.onToken(text)
+    })
+
+    stream.on('contentBlock', (block) => {
+      if (block.type === 'tool_use') {
+        callbacks?.onToolUse?.({
+          type: 'tool_use',
+          id: block.id,
+          name: block.name,
+          input: block.input as Record<string, unknown>,
+        })
+      }
+    })
+
+    const finalMessage = await stream.finalMessage()
+
+    for (const block of finalMessage.content) {
+      if (block.type === 'tool_use') {
+        callbacks?.onToolUse?.({
+          type: 'tool_use',
+          id: block.id,
+          name: block.name,
+          input: block.input as Record<string, unknown>,
+        })
       }
     }
 
     callbacks?.onDone(fullText)
     return fullText
-  } catch (err: any) {
-    // AbortError is intentional — treat as normal "done"
-    if (err.name === 'AbortError' || signal?.aborted) {
+  } catch (err: unknown) {
+    const error = err as Error & { name?: string }
+    if (error.name === 'AbortError' || signal?.aborted) {
       callbacks?.onDone(fullText)
       return fullText
     }
-    callbacks?.onError(err)
+    callbacks?.onError(error)
     throw err
   }
 }

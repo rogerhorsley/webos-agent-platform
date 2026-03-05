@@ -12,7 +12,13 @@ const MCPServerSchema = z.object({
 })
 
 export async function mcpRoutes(fastify: FastifyInstance) {
-  fastify.get('/servers', async () => dbGetAll('mcp_servers'))
+  fastify.get('/servers', async (request) => {
+    const { limit, offset } = request.query as { limit?: string; offset?: string }
+    return dbGetAll('mcp_servers', undefined, undefined, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    })
+  })
 
   fastify.post('/servers', async (request, reply) => {
     const body = MCPServerSchema.parse(request.body)

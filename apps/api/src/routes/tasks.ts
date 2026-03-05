@@ -18,9 +18,10 @@ const TaskSchema = z.object({
 
 export async function taskRoutes(fastify: FastifyInstance) {
   fastify.get('/', async (request) => {
-    const { status } = request.query as { status?: string }
-    if (status) return dbGetAll('tasks', 'status = ?', [status])
-    return dbGetAll('tasks')
+    const { status, limit, offset } = request.query as { status?: string; limit?: string; offset?: string }
+    const opts = { limit: limit ? parseInt(limit) : undefined, offset: offset ? parseInt(offset) : undefined }
+    if (status) return dbGetAll('tasks', 'status = ?', [status], opts)
+    return dbGetAll('tasks', undefined, undefined, opts)
   })
 
   fastify.get('/:id', async (request, reply) => {
@@ -46,7 +47,15 @@ export async function taskRoutes(fastify: FastifyInstance) {
     return reply.status(201).send(dbGetOne('tasks', id))
   })
 
-  fastify.post('/:id/start', async (request, reply) => {
+  fastify.put('/:id', async (request, reply) => {
+    const { id } = request.params as { id: string }
+    if (!dbExists('tasks', id)) return reply.status(404).send({ error: 'Task not found' })
+    const body = request.body as Record<string, any>
+    dbUpdate('tasks', id, body)
+    return dbGetOne('tasks', id)
+  })
+
+  fastify.post('/:id/start', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { id } = request.params as { id: string }
     if (!dbExists('tasks', id)) return reply.status(404).send({ error: 'Task not found' })
     dbUpdate('tasks', id, { status: 'queued' })

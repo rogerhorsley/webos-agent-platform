@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import rateLimit from '@fastify/rate-limit'
 import staticPlugin from '@fastify/static'
 import path from 'path'
 import { existsSync } from 'fs'
@@ -14,6 +15,7 @@ import { workflowRoutes } from './routes/workflows'
 import { streamChat } from './services/claude'
 import { setupTerminalSocket } from './routes/terminal'
 import { workspaceRoutes } from './routes/workspaces'
+import { chatRoutes as restChatRoutes } from './routes/chat'
 import { ensureWorkspacesRoot } from './services/workspace'
 import { startWorker, setSocketIO, getQueueStats, closeQueue } from './services/taskQueue'
 import { teamRoutes } from './routes/teams'
@@ -22,6 +24,7 @@ import { handleNexusCoreChat, NEXUS_CORE_ID } from './services/nexusCore'
 import { setMessageBusIO } from './services/messageBus'
 import { channelRoutes } from './routes/channels'
 import { scheduledTaskRoutes } from './routes/scheduledTasks'
+import { chatRoutes as chatSessionRoutes } from './routes/chats'
 import './channels/index'
 import { setChannelManagerIO, restoreChannels } from './services/channelManager'
 import { startScheduler, setSchedulerIO } from './services/taskScheduler'
@@ -29,9 +32,15 @@ import { startAutonomyLoop, setAutonomyIO } from './services/agentAutonomy'
 import { noteRoutes } from './routes/notes'
 import { browserRoutes } from './routes/browser'
 import { mailRoutes } from './routes/mail'
+import { dbHealthCheck } from './db/index'
+import IORedis from 'ioredis'
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000
 const HOST = process.env.HOST || '0.0.0.0'
+const API_KEY = process.env.API_KEY || ''
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost'
+const REDIS_PORT = process.env.REDIS_PORT || '6379'
+const REDIS_URL = process.env.REDIS_URL || `redis://${REDIS_HOST}:${REDIS_PORT}`
 
 async function main() {
   await ensureWorkspacesRoot()
@@ -45,6 +54,41 @@ async function main() {
     origin: true,
     credentials: true,
   })
+
+  // Rate limiting (global: 60 req/min per IP)
+  await fastify.register(rateLimit, {
+    max: 60,
+    timeWindow: '1 minute',
+  })
+
+  // Global error handler
+  fastify.setErrorHandler((error, request, reply) => {
+    const statusCode = error.statusCode ?? 500
+    const isProduction = process.env.NODE_ENV === 'production'
+
+    fastify.log.error({
+      err: error,
+      method: request.method,
+      url: request.url,
+      statusCode,
+    })
+
+    reply.status(statusCode).send({
+      error: isProduction && statusCode >= 500 ? 'Internal Server Error' : error.message,
+      statusCode,
+    })
+  })
+
+  // API key authentication hook for /api/* routes
+  if (API_KEY) {
+    fastify.addHook('preHandler', async (request, reply) => {
+      if (!request.url.startsWith('/api')) return
+      const authHeader = request.headers.authorization
+      if (!authHeader || authHeader !== `Bearer ${API_KEY}`) {
+        return reply.status(401).send({ error: 'Unauthorized: invalid or missing API key' })
+      }
+    })
+  }
 
   // Socket.IO
   const io = new Server(fastify.server, {
@@ -117,6 +161,9 @@ async function main() {
                 activeAbort = null
                 socket.emit('chat:error', { agentId: targetAgentId, error: err.message })
               },
+              onToolUse: (toolUse) => {
+                socket.emit('chat:tool_use', { agentId: targetAgentId, ...toolUse })
+              },
             },
             signal
           )
@@ -133,7 +180,6 @@ async function main() {
       if (activeAbort) {
         activeAbort.abort()
         activeAbort = null
-        // Notify client that the stream was stopped
         socket.emit('chat:stopped')
       }
     })
@@ -176,6 +222,36 @@ async function main() {
     return { status: 'ok', timestamp: new Date().toISOString(), queue: queueStats }
   })
 
+  // Liveness probe — lightweight "am I up?"
+  fastify.get('/health/live', async () => {
+    return { status: 'ok', timestamp: new Date().toISOString() }
+  })
+
+  // Readiness probe — check SQLite + Redis
+  fastify.get('/health/ready', async (_request, reply) => {
+    const checks: Record<string, boolean> = {}
+
+    checks.sqlite = dbHealthCheck()
+
+    try {
+      const redis = new IORedis(REDIS_URL, { lazyConnect: true, connectTimeout: 2000 })
+      await redis.connect()
+      await redis.ping()
+      checks.redis = true
+      await redis.quit()
+    } catch {
+      checks.redis = false
+    }
+
+    const allReady = Object.values(checks).every(Boolean)
+    const statusCode = allReady ? 200 : 503
+    return reply.status(statusCode).send({
+      status: allReady ? 'ready' : 'not_ready',
+      checks,
+      timestamp: new Date().toISOString(),
+    })
+  })
+
   // API routes
   fastify.register(agentRoutes, { prefix: '/api/agents' })
   fastify.register(taskRoutes, { prefix: '/api/tasks' })
@@ -191,6 +267,8 @@ async function main() {
   fastify.register(noteRoutes, { prefix: '/api/notes' })
   fastify.register(browserRoutes, { prefix: '/api/browser' })
   fastify.register(mailRoutes, { prefix: '/api/mail' })
+  fastify.register(restChatRoutes, { prefix: '/api/chat' })
+  fastify.register(chatSessionRoutes, { prefix: '/api/chats' })
 
   // Serve built frontend (production mode)
   const webDistPath = path.resolve(process.cwd(), '..', 'web', 'dist')

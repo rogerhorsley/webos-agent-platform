@@ -4,8 +4,12 @@ import { dbGetAll, dbGetOne, dbInsert, dbUpdate, dbDelete, dbExists } from '../d
 import { streamChat } from '../services/claude'
 
 export async function skillRoutes(fastify: FastifyInstance) {
-  fastify.get('/', async () => {
-    return dbGetAll('skills').map(s => ({
+  fastify.get('/', async (request) => {
+    const { limit, offset } = request.query as { limit?: string; offset?: string }
+    return dbGetAll('skills', undefined, undefined, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    }).map(s => ({
       ...s,
       installed: s.installed === 1 || s.installed === true,
     }))
@@ -45,8 +49,12 @@ export async function skillRoutes(fastify: FastifyInstance) {
     config: z.record(z.any()).optional(),
   })
 
-  fastify.get('/chains', async () => {
-    return dbGetAll('skill_chains')
+  fastify.get('/chains', async (request) => {
+    const { limit, offset } = request.query as { limit?: string; offset?: string }
+    return dbGetAll('skill_chains', undefined, undefined, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    })
   })
 
   fastify.post('/chains', async (request, reply) => {

@@ -19,14 +19,24 @@ export function setSocketIO(io: any) {
   ioInstance = io
 }
 
+let redisErrorLogged = false
+
 function getRedisConnection(): IORedis {
   if (!connection) {
     connection = new IORedis(REDIS_URL, {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
+      retryStrategy: (times) => {
+        if (times > 3) return null
+        return Math.min(times * 1000, 5000)
+      },
+      lazyConnect: true,
     })
     connection.on('error', (err) => {
-      console.error('[Redis] Connection error:', err.message)
+      if (!redisErrorLogged) {
+        console.error('[Redis] Connection error:', err.message)
+        redisErrorLogged = true
+      }
     })
   }
   return connection
@@ -137,6 +147,9 @@ export function startWorker(): Worker {
           completedAt: new Date().toISOString(),
         })
         emitTaskEvent(taskId, 'task:status', { taskId, status: 'completed', progress: 100 })
+        if (ioInstance) {
+          ioInstance.emit('task:done', { taskId, output: result, taskName: task.name })
+        }
         agentMessageBus.clearContext(taskId)
 
       } catch (err: any) {

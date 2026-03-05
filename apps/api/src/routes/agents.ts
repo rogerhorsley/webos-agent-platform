@@ -15,8 +15,12 @@ const AgentSchema = z.object({
 })
 
 export async function agentRoutes(fastify: FastifyInstance) {
-  fastify.get('/', async () => {
-    return dbGetAll('agents')
+  fastify.get('/', async (request) => {
+    const { limit, offset } = request.query as { limit?: string; offset?: string }
+    return dbGetAll('agents', undefined, undefined, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    })
   })
 
   fastify.get('/:id', async (request, reply) => {
@@ -70,8 +74,12 @@ export async function agentRoutes(fastify: FastifyInstance) {
 
   // ── Agent Templates (Market) ──────────────────────────────────────────
 
-  fastify.get('/templates', async () => {
-    return dbGetAll('agent_templates')
+  fastify.get('/templates', async (request) => {
+    const { limit, offset } = request.query as { limit?: string; offset?: string }
+    return dbGetAll('agent_templates', undefined, undefined, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    })
   })
 
   fastify.post('/templates/:slug/install', async (request, reply) => {

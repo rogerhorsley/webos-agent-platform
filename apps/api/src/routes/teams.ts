@@ -27,8 +27,12 @@ function hydrateTeam(team: any) {
 }
 
 export async function teamRoutes(fastify: FastifyInstance) {
-  fastify.get('/', async () => {
-    const teams = dbGetAll<any>('agent_teams')
+  fastify.get('/', async (request) => {
+    const { limit, offset } = request.query as { limit?: string; offset?: string }
+    const teams = dbGetAll<any>('agent_teams', undefined, undefined, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    })
     return teams.map(hydrateTeam)
   })
 
@@ -70,7 +74,7 @@ export async function teamRoutes(fastify: FastifyInstance) {
     return reply.status(204).send()
   })
 
-  fastify.post('/:id/run', async (request, reply) => {
+  fastify.post('/:id/run', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const team = dbGetOne<any>('agent_teams', id)
     if (!team) return reply.status(404).send({ error: 'Team not found' })
