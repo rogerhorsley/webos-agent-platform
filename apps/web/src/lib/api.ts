@@ -47,6 +47,7 @@ export const tasksApi = {
   list: (status?: string) => request<any[]>(`/api/tasks${status ? `?status=${status}` : ''}`),
   get: (id: string) => request<any>(`/api/tasks/${id}`),
   create: (body: any) => request<any>('/api/tasks', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: any) => request<any>(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   start: (id: string) => request<any>(`/api/tasks/${id}/start`, { method: 'POST' }),
   cancel: (id: string) => request<any>(`/api/tasks/${id}/cancel`, { method: 'POST' }),
   delete: (id: string) => request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
@@ -127,6 +128,20 @@ export const scheduledTasksApi = {
   delete: (id: string) => request<void>(`/api/scheduled-tasks/${id}`, { method: 'DELETE' }),
 }
 
+// Chat Sessions
+export const chatsApi = {
+  list: () => request<any[]>('/api/chats'),
+  get: (id: string) => request<any>(`/api/chats/${id}`),
+  create: (body?: { title?: string; agentId?: string; model?: string }) =>
+    request<any>('/api/chats', { method: 'POST', body: JSON.stringify(body || {}) }),
+  update: (id: string, body: { title?: string }) =>
+    request<any>(`/api/chats/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: (id: string) => request<void>(`/api/chats/${id}`, { method: 'DELETE' }),
+  getMessages: (id: string) => request<any[]>(`/api/chats/${id}/messages`),
+  addMessage: (id: string, body: { role: string; content: string; attachments?: any[]; dispatch?: any }) =>
+    request<any>(`/api/chats/${id}/messages`, { method: 'POST', body: JSON.stringify(body) }),
+}
+
 // MCP
 export const mcpApi = {
   listServers: () => request<any[]>('/api/mcp/servers'),
@@ -134,18 +149,4 @@ export const mcpApi = {
   deleteServer: (id: string) => request<void>(`/api/mcp/servers/${id}`, { method: 'DELETE' }),
   callTool: (name: string, args: any) =>
     request<any>(`/api/mcp/tools/${name}/call`, { method: 'POST', body: JSON.stringify({ args }) }),
-}
-
-// Chat Sessions
-export const chatsApi = {
-  list: () => request<any[]>('/api/chats'),
-  get: (id: string) => request<any>(`/api/chats/${id}`),
-  create: (body: { title?: string; agentId?: string; model?: string }) =>
-    request<any>('/api/chats', { method: 'POST', body: JSON.stringify(body) }),
-  update: (id: string, body: { title?: string }) =>
-    request<any>(`/api/chats/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  delete: (id: string) => request<void>(`/api/chats/${id}`, { method: 'DELETE' }),
-  messages: (id: string) => request<any[]>(`/api/chats/${id}/messages`),
-  addMessage: (id: string, body: { role: string; content: string; attachments?: any[]; dispatch?: any }) =>
-    request<any>(`/api/chats/${id}/messages`, { method: 'POST', body: JSON.stringify(body) }),
 }

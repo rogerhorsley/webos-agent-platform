@@ -47,6 +47,14 @@ export async function taskRoutes(fastify: FastifyInstance) {
     return reply.status(201).send(dbGetOne('tasks', id))
   })
 
+  fastify.put('/:id', async (request, reply) => {
+    const { id } = request.params as { id: string }
+    if (!dbExists('tasks', id)) return reply.status(404).send({ error: 'Task not found' })
+    const body = request.body as Record<string, any>
+    dbUpdate('tasks', id, body)
+    return dbGetOne('tasks', id)
+  })
+
   fastify.post('/:id/start', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { id } = request.params as { id: string }
     if (!dbExists('tasks', id)) return reply.status(404).send({ error: 'Task not found' })

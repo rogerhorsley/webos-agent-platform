@@ -1,4 +1,5 @@
 import { useWindowStore } from '../stores/windowStore'
+import { useBadgeStore } from '../stores/badgeStore'
 import {
   Users, ListTodo, MessageSquare, Terminal,
   Puzzle, FileText, Workflow, Settings, FolderOpen,
@@ -22,7 +23,6 @@ const iconMap: Record<string, React.ComponentType<{ className?: string; strokeWi
   Users, ListTodo, MessageSquare, Terminal, Puzzle, FileText, Workflow, Settings, FolderOpen, Radio,
 }
 
-// ─── Window Tray：右侧已打开窗口列表 ─────────────────────────────────────────
 function WindowTray() {
   const { windows, activeWindowId, focusWindow, closeWindow } = useWindowStore()
 
@@ -30,10 +30,8 @@ function WindowTray() {
 
   return (
     <>
-      {/* 分隔线 */}
       <div className="self-stretch w-px mx-1 my-1.5 bg-white/10 flex-shrink-0" />
 
-      {/* 窗口标签列表 */}
       <div className="flex items-center gap-1 overflow-x-auto max-w-[480px] px-1"
         style={{ scrollbarWidth: 'none' }}
       >
@@ -69,7 +67,6 @@ function WindowTray() {
                   opacity: isMinimized ? 0.6 : 1,
                 }}
               >
-                {/* 活跃指示点 */}
                 <span
                   className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                   style={{
@@ -81,7 +78,6 @@ function WindowTray() {
                 {isMinimized && (
                   <Minus className="w-2.5 h-2.5 flex-shrink-0 opacity-50" />
                 )}
-                {/* 关闭按钮：内嵌右侧，hover 时显示 */}
                 <span
                   onClick={e => { e.stopPropagation(); closeWindow(w.id) }}
                   className="w-3.5 h-3.5 rounded-full bg-[#FF5F57] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-bold text-[#991000] flex-shrink-0 ml-0.5"
@@ -99,18 +95,21 @@ function WindowTray() {
 
 export function Dock() {
   const { windows, openWindow, activeWindowId } = useWindowStore()
+  const taskRunningCount = useBadgeStore(s => s.taskRunningCount)
+  const chatUnread = useBadgeStore(s => s.chatUnread)
 
   return (
     <div className="dock">
-      {/* ── App launcher ── */}
       {apps.map((app, index) => {
         const Icon     = iconMap[app.icon]
         const isOpen   = windows.some(w => w.id === app.id)
         const isActive = activeWindowId === app.id
 
+        const showTaskBadge = app.id === 'tasks' && taskRunningCount > 0
+        const showChatDot = app.id === 'chat' && chatUnread > 0
+
         return (
           <div key={app.id} className="relative group">
-            {/* Separator before Settings */}
             {index === apps.length - 1 && (
               <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-px h-5 bg-white/10" />
             )}
@@ -124,7 +123,22 @@ export function Dock() {
               {isOpen && !isActive && <span className="dot" />}
             </button>
 
-            {/* Tooltip */}
+            {showTaskBadge && (
+              <span
+                className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full text-[10px] font-bold text-white pointer-events-none"
+                style={{ background: '#ef4444', boxShadow: '0 0 6px rgba(239,68,68,0.5)' }}
+              >
+                {taskRunningCount}
+              </span>
+            )}
+
+            {showChatDot && (
+              <span
+                className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full pointer-events-none"
+                style={{ background: '#4ade80', boxShadow: '0 0 6px rgba(74,222,128,0.5)' }}
+              />
+            )}
+
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-desktop-elevated text-ink-1 text-xs rounded-md border border-white/8 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-menu">
               {app.title}
             </div>
@@ -132,7 +146,6 @@ export function Dock() {
         )
       })}
 
-      {/* ── Window Tray (right side) ── */}
       <WindowTray />
     </div>
   )

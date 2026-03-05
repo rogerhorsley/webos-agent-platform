@@ -66,7 +66,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
   fastify.post('/:id/messages', async (request, reply) => {
     const { id } = request.params as { id: string }
-    if (!dbExists('chat_sessions', id)) return reply.status(404).send({ error: 'Chat session not found' })
+    const session = dbGetOne<any>('chat_sessions', id)
+    if (!session) return reply.status(404).send({ error: 'Chat session not found' })
     const body = MessageSchema.parse(request.body)
     const msgId = crypto.randomUUID()
     const now = new Date().toISOString()
@@ -78,7 +79,14 @@ export async function chatRoutes(fastify: FastifyInstance) {
       dispatch: body.dispatch || null,
       createdAt: now,
     })
-    dbUpdate('chat_sessions', id, { updatedAt: now })
+
+    // Auto-set title from first user message if still default
+    if (body.role === 'user' && session.title === 'New Chat') {
+      dbUpdate('chat_sessions', id, { title: body.content.slice(0, 30), updatedAt: now })
+    } else {
+      dbUpdate('chat_sessions', id, { updatedAt: now })
+    }
+
     return reply.status(201).send(dbGetOne('chat_messages', msgId))
   })
 }
