@@ -42,6 +42,7 @@ export const tasksApi = {
   list: (status?: string) => request<any[]>(`/api/tasks${status ? `?status=${status}` : ''}`),
   get: (id: string) => request<any>(`/api/tasks/${id}`),
   create: (body: any) => request<any>('/api/tasks', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: any) => request<any>(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   start: (id: string) => request<any>(`/api/tasks/${id}/start`, { method: 'POST' }),
   cancel: (id: string) => request<any>(`/api/tasks/${id}/cancel`, { method: 'POST' }),
   delete: (id: string) => request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
