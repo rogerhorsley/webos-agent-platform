@@ -17,8 +17,12 @@ const SendSchema = z.object({
 })
 
 export async function channelRoutes(fastify: FastifyInstance) {
-  fastify.get('/', async () => {
-    const channels = dbGetAll('channels')
+  fastify.get('/', async (request) => {
+    const { limit, offset } = request.query as { limit?: string; offset?: string }
+    const channels = dbGetAll('channels', undefined, undefined, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    })
     return channels.map((ch: any) => ({
       ...ch,
       config: { ...ch.config, botToken: ch.config?.botToken ? '***' : undefined, appSecret: ch.config?.appSecret ? '***' : undefined },

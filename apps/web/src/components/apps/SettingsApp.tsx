@@ -4,7 +4,9 @@ import { useWallpaperStore, WALLPAPERS } from '../../stores/wallpaperStore'
 
 export function SettingsApp() {
   const [apiKey, setApiKey] = useState(localStorage.getItem('anthropic_api_key') || '')
+  const [nexusApiKey, setNexusApiKey] = useState(localStorage.getItem('api_key') || '')
   const [showKey, setShowKey] = useState(false)
+  const [showNexusKey, setShowNexusKey] = useState(false)
   const [saved, setSaved] = useState(false)
   const [dispatchMode, setDispatchMode] = useState(localStorage.getItem('nexus_dispatch_mode') || 'auto')
 
@@ -12,6 +14,7 @@ export function SettingsApp() {
 
   const handleSave = () => {
     localStorage.setItem('anthropic_api_key', apiKey)
+    localStorage.setItem('api_key', nexusApiKey)
     localStorage.setItem('nexus_dispatch_mode', dispatchMode)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -105,6 +108,20 @@ export function SettingsApp() {
               <Info className="w-3.5 h-3.5 text-state-info flex-shrink-0 mt-0.5" strokeWidth={1.75} />
               <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(96,165,250,0.8)' }}>
                 API Key 存储在浏览器本地。生产环境请通过 <span className="font-mono">ANTHROPIC_API_KEY</span> 环境变量配置。
+              </p>
+            </div>
+
+            <div className="mt-3">
+              <label className="text-ink-3 text-xs mb-1.5 block">NexusOS API Key</label>
+              <div className="relative">
+                <input type={showNexusKey ? 'text' : 'password'} value={nexusApiKey} onChange={e => setNexusApiKey(e.target.value)}
+                  placeholder="your-secret-api-key" className="app-input pr-9 font-mono" />
+                <button onClick={() => setShowNexusKey(!showNexusKey)} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-white/5 rounded transition-colors">
+                  {showNexusKey ? <EyeOff className="w-3.5 h-3.5 text-ink-3" /> : <Eye className="w-3.5 h-3.5 text-ink-3" />}
+                </button>
+              </div>
+              <p className="text-ink-4 text-[11px] mt-1.5 leading-relaxed">
+                用于 API 请求认证。需与服务器 <span className="font-mono">API_KEY</span> 环境变量一致。
               </p>
             </div>
           </div>

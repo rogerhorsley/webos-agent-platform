@@ -28,6 +28,8 @@ const DEFAULT_MODEL = 'claude-sonnet-4-5-20250514'
 function resolveModel(model?: string): string {
   if (!model) return DEFAULT_MODEL
   const modelMap: Record<string, string> = {
+    'claude-sonnet-4-6': 'claude-sonnet-4-6-20260301',
+    'claude-opus-4-6': 'claude-opus-4-6-20260301',
     'claude-sonnet-4-5': 'claude-sonnet-4-5-20250514',
     'claude-opus-4-5': 'claude-opus-4-5-20250514',
     'claude-haiku-4-5': 'claude-haiku-4-5-20250514',
@@ -86,7 +88,6 @@ export async function streamChat(
 
     const finalMessage = await stream.finalMessage()
 
-    // Extract any tool_use blocks from final message
     for (const block of finalMessage.content) {
       if (block.type === 'tool_use') {
         callbacks?.onToolUse?.({

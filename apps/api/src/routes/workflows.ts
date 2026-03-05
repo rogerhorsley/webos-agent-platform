@@ -66,7 +66,13 @@ function topoSort(nodes: NodeLike[], edges: EdgeLike[]): NodeLike[] {
 }
 
 export async function workflowRoutes(fastify: FastifyInstance) {
-  fastify.get('/', async () => dbGetAll('workflows'))
+  fastify.get('/', async (request) => {
+    const { limit, offset } = request.query as { limit?: string; offset?: string }
+    return dbGetAll('workflows', undefined, undefined, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    })
+  })
 
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
@@ -98,7 +104,7 @@ export async function workflowRoutes(fastify: FastifyInstance) {
     return reply.status(204).send()
   })
 
-  fastify.post('/:id/run', async (request, reply) => {
+  fastify.post('/:id/run', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { id } = request.params as { id: string }
     if (!dbExists('workflows', id)) return reply.status(404).send({ error: 'Workflow not found' })
     const runInput = RunSchema.parse(request.body || {})

@@ -261,6 +261,27 @@ db.exec(`
     createdAt   TEXT NOT NULL,
     updatedAt   TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS chat_sessions (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL DEFAULT 'New Chat',
+    agentId     TEXT,
+    model       TEXT,
+    createdAt   TEXT NOT NULL,
+    updatedAt   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id          TEXT PRIMARY KEY,
+    sessionId   TEXT NOT NULL,
+    role        TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    attachments TEXT DEFAULT '[]',
+    dispatch    TEXT,
+    createdAt   TEXT NOT NULL,
+    FOREIGN KEY (sessionId) REFERENCES chat_sessions(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(sessionId, createdAt);
 `)
 
 // ─────────────────────────────────────────────
@@ -366,6 +387,8 @@ const JSON_COLS: Record<string, string[]> = {
   channel_messages:['metadata'],
   notes:           ['content', 'tags'],
   mcp_servers:     ['env', 'tools', 'resources', 'prompts', 'healthCheck'],
+  chat_sessions:   [],
+  chat_messages:   ['attachments', 'dispatch'],
 }
 
 function parseRow(table: string, row: any): any {
@@ -394,9 +417,17 @@ function serializeRow(table: string, data: Record<string, any>): Record<string, 
   return serialized
 }
 
-export function dbGetAll<T = any>(table: string, where?: string, params?: any[]): T[] {
-  const sql = `SELECT * FROM ${table}${where ? ` WHERE ${where}` : ''} ORDER BY createdAt DESC`
-  const rows = params ? (db.prepare(sql).all(...params) as any[]) : (db.prepare(sql).all() as any[])
+export function dbGetAll<T = any>(
+  table: string,
+  where?: string,
+  params?: any[],
+  opts?: { limit?: number; offset?: number }
+): T[] {
+  const limit = opts?.limit ?? 50
+  const offset = opts?.offset ?? 0
+  const sql = `SELECT * FROM ${table}${where ? ` WHERE ${where}` : ''} ORDER BY createdAt DESC LIMIT ? OFFSET ?`
+  const allParams = [...(params || []), limit, offset]
+  const rows = db.prepare(sql).all(...allParams) as any[]
   return rows.map(r => parseRow(table, r)) as T[]
 }
 
@@ -431,4 +462,13 @@ export function dbCount(table: string, where?: string, params?: any[]): number {
   const sql = `SELECT COUNT(*) as n FROM ${table}${where ? ` WHERE ${where}` : ''}`
   const row = params ? (db.prepare(sql).get(...params) as any) : (db.prepare(sql).get() as any)
   return row?.n ?? 0
+}
+
+export function dbHealthCheck(): boolean {
+  try {
+    const row = db.prepare('SELECT 1 as ok').get() as any
+    return row?.ok === 1
+  } catch {
+    return false
+  }
 }
