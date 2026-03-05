@@ -123,6 +123,18 @@ export const scheduledTasksApi = {
   delete: (id: string) => request<void>(`/api/scheduled-tasks/${id}`, { method: 'DELETE' }),
 }
 
+// Chats
+export const chatsApi = {
+  list: () => request<any[]>('/api/chats'),
+  get: (id: string) => request<any>(`/api/chats/${id}`),
+  create: (body?: { agentId?: string; title?: string }) =>
+    request<any>('/api/chats', { method: 'POST', body: JSON.stringify(body || {}) }),
+  delete: (id: string) => request<void>(`/api/chats/${id}`, { method: 'DELETE' }),
+  getMessages: (id: string) => request<any[]>(`/api/chats/${id}/messages`),
+  addMessage: (id: string, body: { role: string; content: string }) =>
+    request<any>(`/api/chats/${id}/messages`, { method: 'POST', body: JSON.stringify(body) }),
+}
+
 // MCP
 export const mcpApi = {
   listServers: () => request<any[]>('/api/mcp/servers'),

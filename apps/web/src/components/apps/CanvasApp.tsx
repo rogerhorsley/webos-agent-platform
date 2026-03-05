@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, addEdge,
   Connection, Edge, Node, BackgroundVariant, Handle, Position, NodeProps, Panel,
@@ -99,6 +99,8 @@ const initialEdges: Edge[] = [
   { id: 'e6', source: 'tool-2', target: 'output-1', style: { stroke: 'rgba(255,255,255,0.2)', strokeWidth: 1.5 } },
 ]
 
+const INITIAL_NODE_IDS = new Set(initialNodes.map(n => n.id))
+
 let nodeCounter = 100
 const PALETTE = [
   { type: 'trigger',   label: 'Trigger',   color: '#E84C6A' },
@@ -124,6 +126,11 @@ export function CanvasApp() {
   const { data: agents = [] } = useAgents()
   const createWorkflow = useCreateWorkflow()
   const updateWorkflow = useUpdateWorkflow()
+
+  const isDefaultOnly = useMemo(() => {
+    if (nodes.length !== initialNodes.length) return false
+    return nodes.every(n => INITIAL_NODE_IDS.has(n.id))
+  }, [nodes])
 
   const onConnect = useCallback((params: Connection) => setEdges(eds => addEdge({ ...params, style: { stroke: 'rgba(255,255,255,0.2)', strokeWidth: 1.5 } }, eds)), [setEdges])
   const onNodeClick = useCallback((_: any, node: Node) => setSelectedNode(node), [])
@@ -211,6 +218,16 @@ export function CanvasApp() {
             maskColor="rgba(12,12,14,0.7)"
           />
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(255,255,255,0.06)" />
+          {isDefaultOnly && (
+            <Panel position="bottom-center">
+              <div
+                className="px-4 py-2 rounded-xl text-xs text-ink-4 select-none pointer-events-none"
+                style={{ background: 'rgba(12,12,14,0.7)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)' }}
+              >
+                Click nodes in the left panel to add them to the canvas
+              </div>
+            </Panel>
+          )}
           <Panel position="top-right">
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: '#1C1C1F', border: '1px solid rgba(255,255,255,0.08)' }}>
               <input value={workflowName} onChange={e => setWorkflowName(e.target.value)}

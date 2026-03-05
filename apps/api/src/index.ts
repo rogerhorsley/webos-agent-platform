@@ -14,7 +14,7 @@ import { workflowRoutes } from './routes/workflows'
 import { streamChat } from './services/claude'
 import { setupTerminalSocket } from './routes/terminal'
 import { workspaceRoutes } from './routes/workspaces'
-import { chatRoutes } from './routes/chat'
+import { chatRoutes as restChatRoutes } from './routes/chat'
 import { ensureWorkspacesRoot } from './services/workspace'
 import { startWorker, setSocketIO, getQueueStats, closeQueue } from './services/taskQueue'
 import { teamRoutes } from './routes/teams'
@@ -23,6 +23,7 @@ import { handleNexusCoreChat, NEXUS_CORE_ID } from './services/nexusCore'
 import { setMessageBusIO } from './services/messageBus'
 import { channelRoutes } from './routes/channels'
 import { scheduledTaskRoutes } from './routes/scheduledTasks'
+import { chatRoutes as chatSessionRoutes } from './routes/chats'
 import './channels/index'
 import { setChannelManagerIO, restoreChannels } from './services/channelManager'
 import { startScheduler, setSchedulerIO } from './services/taskScheduler'
@@ -134,7 +135,6 @@ async function main() {
       if (activeAbort) {
         activeAbort.abort()
         activeAbort = null
-        // Notify client that the stream was stopped
         socket.emit('chat:stopped')
       }
     })
@@ -189,7 +189,8 @@ async function main() {
   fastify.register(channelRoutes, { prefix: '/api/channels' })
   fastify.register(scheduledTaskRoutes, { prefix: '/api/scheduled-tasks' })
   fastify.register(workspaceRoutes, { prefix: '/api/workspaces' })
-  fastify.register(chatRoutes, { prefix: '/api/chat' })
+  fastify.register(restChatRoutes, { prefix: '/api/chat' })
+  fastify.register(chatSessionRoutes, { prefix: '/api/chats' })
 
   // Serve built frontend (production mode)
   const webDistPath = path.resolve(process.cwd(), '..', 'web', 'dist')

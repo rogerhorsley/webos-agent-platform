@@ -147,6 +147,9 @@ export function startWorker(): Worker {
           completedAt: new Date().toISOString(),
         })
         emitTaskEvent(taskId, 'task:status', { taskId, status: 'completed', progress: 100 })
+        if (ioInstance) {
+          ioInstance.emit('task:done', { taskId, output: result, taskName: task.name })
+        }
         agentMessageBus.clearContext(taskId)
 
       } catch (err: any) {

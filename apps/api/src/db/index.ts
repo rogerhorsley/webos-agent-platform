@@ -227,6 +227,24 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_mail_msgs ON mail_messages(accountId, folder, date);
 
+  CREATE TABLE IF NOT EXISTS chat_sessions (
+    id          TEXT PRIMARY KEY,
+    agentId     TEXT,
+    title       TEXT NOT NULL DEFAULT 'New Chat',
+    createdAt   TEXT NOT NULL,
+    updatedAt   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id          TEXT PRIMARY KEY,
+    sessionId   TEXT NOT NULL,
+    role        TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    createdAt   TEXT NOT NULL,
+    FOREIGN KEY (sessionId) REFERENCES chat_sessions(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_msgs_session ON chat_messages(sessionId, createdAt);
+
   CREATE TABLE IF NOT EXISTS mcp_servers (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
