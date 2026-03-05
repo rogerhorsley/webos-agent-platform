@@ -1,8 +1,13 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
+function getAuthHeaders(): Record<string, string> {
+  const apiKey = localStorage.getItem('api_key')
+  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders(), ...options?.headers },
     ...options,
   })
   if (!res.ok) {
@@ -129,4 +134,18 @@ export const mcpApi = {
   deleteServer: (id: string) => request<void>(`/api/mcp/servers/${id}`, { method: 'DELETE' }),
   callTool: (name: string, args: any) =>
     request<any>(`/api/mcp/tools/${name}/call`, { method: 'POST', body: JSON.stringify({ args }) }),
+}
+
+// Chat Sessions
+export const chatsApi = {
+  list: () => request<any[]>('/api/chats'),
+  get: (id: string) => request<any>(`/api/chats/${id}`),
+  create: (body: { title?: string; agentId?: string; model?: string }) =>
+    request<any>('/api/chats', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: { title?: string }) =>
+    request<any>(`/api/chats/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: (id: string) => request<void>(`/api/chats/${id}`, { method: 'DELETE' }),
+  messages: (id: string) => request<any[]>(`/api/chats/${id}/messages`),
+  addMessage: (id: string, body: { role: string; content: string; attachments?: any[]; dispatch?: any }) =>
+    request<any>(`/api/chats/${id}/messages`, { method: 'POST', body: JSON.stringify(body) }),
 }

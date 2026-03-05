@@ -19,7 +19,13 @@ const PromptSchema = z.object({
 })
 
 export async function promptRoutes(fastify: FastifyInstance) {
-  fastify.get('/', async () => dbGetAll('prompts'))
+  fastify.get('/', async (request) => {
+    const { limit, offset } = request.query as { limit?: string; offset?: string }
+    return dbGetAll('prompts', undefined, undefined, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+    })
+  })
 
   fastify.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }

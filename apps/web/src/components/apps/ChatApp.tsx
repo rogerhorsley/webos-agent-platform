@@ -6,7 +6,7 @@ import {
 import { getSocket } from '../../lib/socket'
 import { useAgents } from '../../hooks/useAgents'
 import { MessageContent } from '../chat/MessageContent'
-import { tasksApi, teamsApi } from '../../lib/api'
+import { tasksApi, teamsApi, chatsApi } from '../../lib/api'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +80,8 @@ export function ChatApp() {
   const [selectedAgentId, setSelectedAgentId] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<any[]>([])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const streamingIdRef = useRef<string | null>(null)
@@ -90,6 +92,35 @@ export function ChatApp() {
   const dispatchMode = (localStorage.getItem('nexus_dispatch_mode') as 'auto' | 'confirm') || 'auto'
   const dispatchModeRef = useRef(dispatchMode)
   dispatchModeRef.current = dispatchMode
+
+  useEffect(() => {
+    chatsApi.list().then(setSessions).catch(() => {})
+  }, [])
+
+  const loadSession = useCallback(async (id: string) => {
+    try {
+      const msgs = await chatsApi.messages(id)
+      setMessages(msgs.map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        attachments: m.attachments,
+        dispatch: m.dispatch,
+      })))
+      setSessionId(id)
+    } catch { /* ignore */ }
+  }, [])
+
+  const startNewSession = useCallback(async () => {
+    setMessages([])
+    setSessionId(null)
+  }, [])
+
+  const persistMessage = useCallback(async (sid: string, role: string, content: string, extra?: { attachments?: any[]; dispatch?: any }) => {
+    try {
+      await chatsApi.addMessage(sid, { role, content, ...extra })
+    } catch { /* best-effort persistence */ }
+  }, [])
 
   useEffect(() => {
     if (!agents.length || selectedAgentId) return
@@ -120,19 +151,29 @@ export function ChatApp() {
     }
     const onDone = (data: { content?: string; dispatch?: DispatchDirective }) => {
       const mode = dispatchModeRef.current
-      setMessages(prev => prev.map(m =>
-        m.id === streamingIdRef.current
-          ? {
-              ...m,
-              streaming: false,
-              dispatch: data.dispatch || undefined,
-              dispatchState: data.dispatch ? (mode === 'auto' ? 'running' : 'idle') : undefined,
-            }
-          : m
-      ))
+      let finalContent = ''
+      setMessages(prev => prev.map(m => {
+        if (m.id === streamingIdRef.current) {
+          finalContent = m.content
+          return {
+            ...m,
+            streaming: false,
+            dispatch: data.dispatch || undefined,
+            dispatchState: data.dispatch ? (mode === 'auto' ? 'running' : 'idle') : undefined,
+          }
+        }
+        return m
+      }))
       const completedMessageId = streamingIdRef.current
       streamingIdRef.current = null
       setIsStreaming(false)
+
+      if (finalContent) {
+        setSessionId(sid => {
+          if (sid) persistMessage(sid, 'assistant', finalContent, { dispatch: data.dispatch })
+          return sid
+        })
+      }
 
       if (data.dispatch && completedMessageId && mode === 'auto') {
         void executeDispatch(data.dispatch, completedMessageId)
@@ -254,11 +295,10 @@ export function ChatApp() {
 
   // ── Send ───────────────────────────────────────────────────────────────────
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     if ((!input.trim() && attachments.length === 0) || isStreaming) return
     setError(null)
 
-    // Build user message content: text + attachment inline refs
     let userContent = input.trim()
     attachments.forEach(att => {
       if (att.type === 'image') userContent += `\n\n![${att.name}](${att.url})`
@@ -266,6 +306,20 @@ export function ChatApp() {
       else if (att.type === 'audio') userContent += `\n\n[${att.name}](${att.url})`
       else userContent += `\n\n[${att.name}](${att.url})`
     })
+
+    let currentSessionId = sessionId
+    if (!currentSessionId) {
+      try {
+        const session = await chatsApi.create({
+          title: userContent.slice(0, 50) || 'New Chat',
+          agentId: selectedAgentId || undefined,
+          model: selectedAgent?.config?.model,
+        })
+        currentSessionId = session.id
+        setSessionId(session.id)
+        setSessions(prev => [session, ...prev])
+      } catch { /* continue without persistence */ }
+    }
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -288,6 +342,10 @@ export function ChatApp() {
     setIsStreaming(true)
     streamingIdRef.current = assistantId
 
+    if (currentSessionId) {
+      persistMessage(currentSessionId, 'user', userContent, { attachments: userMsg.attachments })
+    }
+
     const socket = getSocket()
     socket.emit('chat:message', {
       agentId: selectedAgentId || undefined,
@@ -296,7 +354,7 @@ export function ChatApp() {
       model: selectedAgent?.config?.model,
       dispatchMode,
     })
-  }, [input, attachments, isStreaming, messages, selectedAgentId, selectedAgent, dispatchMode])
+  }, [input, attachments, isStreaming, messages, selectedAgentId, selectedAgent, dispatchMode, sessionId, persistMessage])
 
   const handleStop = useCallback(() => {
     const socket = getSocket()
@@ -311,6 +369,38 @@ export function ChatApp() {
       onDragOver={e => e.preventDefault()}
       onDrop={handleDrop}
     >
+      {/* Session bar */}
+      {sessions.length > 0 && (
+        <div className="flex items-center gap-2 pb-2 border-b border-white/[0.06] flex-shrink-0 overflow-x-auto">
+          <button
+            onClick={startNewSession}
+            className="px-2 py-1 text-[11px] rounded-md whitespace-nowrap transition-colors"
+            style={{
+              background: !sessionId ? 'rgba(232,76,106,0.15)' : 'rgba(255,255,255,0.04)',
+              border: !sessionId ? '1px solid rgba(232,76,106,0.25)' : '1px solid rgba(255,255,255,0.08)',
+              color: !sessionId ? '#f9a8d4' : 'rgba(161,161,170,1)',
+            }}
+          >
+            + 新对话
+          </button>
+          {sessions.slice(0, 10).map((s: any) => (
+            <button
+              key={s.id}
+              onClick={() => loadSession(s.id)}
+              className="px-2 py-1 text-[11px] rounded-md whitespace-nowrap truncate max-w-[120px] transition-colors"
+              style={{
+                background: sessionId === s.id ? 'rgba(96,165,250,0.12)' : 'rgba(255,255,255,0.04)',
+                border: sessionId === s.id ? '1px solid rgba(96,165,250,0.25)' : '1px solid rgba(255,255,255,0.08)',
+                color: sessionId === s.id ? '#93c5fd' : 'rgba(161,161,170,1)',
+              }}
+              title={s.title}
+            >
+              {s.title}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Agent selector */}
       <div className="flex items-center gap-2 pb-3 border-b border-white/[0.06] flex-shrink-0">
         <Sparkles className="w-3.5 h-3.5 text-desktop-accent flex-shrink-0" strokeWidth={1.75} />

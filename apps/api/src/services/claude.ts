@@ -29,6 +29,8 @@ function resolveModel(model?: string): string {
   if (model.includes('/')) return model
   // Map bare Claude model names to OpenRouter format
   const modelMap: Record<string, string> = {
+    'claude-sonnet-4-6': 'anthropic/claude-sonnet-4-6',
+    'claude-opus-4-6': 'anthropic/claude-opus-4-6',
     'claude-sonnet-4-5': 'anthropic/claude-sonnet-4-5',
     'claude-opus-4-5': 'anthropic/claude-opus-4-5',
     'claude-haiku-3-5': 'anthropic/claude-haiku-3-5',
