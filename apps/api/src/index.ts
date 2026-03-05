@@ -22,6 +22,7 @@ import { handleNexusCoreChat, NEXUS_CORE_ID } from './services/nexusCore'
 import { setMessageBusIO } from './services/messageBus'
 import { channelRoutes } from './routes/channels'
 import { scheduledTaskRoutes } from './routes/scheduledTasks'
+import { chatRoutes } from './routes/chats'
 import './channels/index'
 import { setChannelManagerIO, restoreChannels } from './services/channelManager'
 import { startScheduler, setSchedulerIO } from './services/taskScheduler'
@@ -185,6 +186,7 @@ async function main() {
   fastify.register(channelRoutes, { prefix: '/api/channels' })
   fastify.register(scheduledTaskRoutes, { prefix: '/api/scheduled-tasks' })
   fastify.register(workspaceRoutes, { prefix: '/api/workspaces' })
+  fastify.register(chatRoutes, { prefix: '/api/chats' })
 
   // Serve built frontend (production mode)
   const webDistPath = path.resolve(process.cwd(), '..', 'web', 'dist')

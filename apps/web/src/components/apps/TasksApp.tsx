@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Plus, X, Play, StopCircle, Trash2, AlertCircle, Loader2, Clock, CheckCircle2, CircleDot, Circle, Users } from 'lucide-react'
+import { Plus, X, Play, StopCircle, Trash2, AlertCircle, Loader2, Clock, CheckCircle2, CircleDot, Circle, Users, Inbox } from 'lucide-react'
 import { useTasks, useCreateTask, useStartTask, useCancelTask, useDeleteTask } from '../../hooks/useTasks'
 import { useAgents } from '../../hooks/useAgents'
 import { getSocket } from '../../lib/socket'
 import { useTeams } from '../../hooks/useTeams'
+import { useBadgeStore } from '../../stores/badgeStore'
 
 const PRIORITY_STYLES: Record<string, string> = {
   urgent: 'text-state-error bg-state-error/10 border-state-error/25',
@@ -18,7 +19,7 @@ const COLUMNS = [
   { key: 'completed', label: 'Done',     Icon: CheckCircle2, color: 'text-state-success' },
 ]
 
-function TaskCard({ task, onStart, onCancel, onDelete, onOpenTeamRun }: any) {
+function TaskCard({ task, onStart, onCancel, onDelete, onOpenTeamRun, onSelect }: any) {
   const [progress, setProgress] = useState(task.progress?.current ?? 0)
   useEffect(() => {
     const socket = getSocket()
@@ -29,10 +30,10 @@ function TaskCard({ task, onStart, onCancel, onDelete, onOpenTeamRun }: any) {
   }, [task.id])
 
   return (
-    <div className="app-card group flex flex-col gap-2">
+    <div className="app-card group flex flex-col gap-2 cursor-pointer" onClick={() => onSelect?.(task)}>
       <div className="flex items-start justify-between gap-1.5">
         <p className="text-ink-1 text-xs font-medium leading-snug">{task.name}</p>
-        <button onClick={() => onDelete(task.id)} className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-state-error/10 rounded transition-all flex-shrink-0">
+        <button onClick={(e) => { e.stopPropagation(); onDelete(task.id) }} className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-state-error/10 rounded transition-all flex-shrink-0">
           <Trash2 className="w-3 h-3 text-state-error/70" strokeWidth={1.75} />
         </button>
       </div>
@@ -42,7 +43,7 @@ function TaskCard({ task, onStart, onCancel, onDelete, onOpenTeamRun }: any) {
         <span className="badge text-ink-4 bg-white/5 border-white/10">{task.type}</span>
         {task.teamId ? (
           <button
-            onClick={() => onOpenTeamRun?.(task)}
+            onClick={(e) => { e.stopPropagation(); onOpenTeamRun?.(task) }}
             className="badge text-purple-300 bg-purple-500/10 border-purple-500/25 hover:bg-purple-500/15"
           >
             <Users className="w-3 h-3" /> Team
@@ -67,12 +68,12 @@ function TaskCard({ task, onStart, onCancel, onDelete, onOpenTeamRun }: any) {
           {new Date(task.createdAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
         </span>
         {task.status === 'pending' && (
-          <button onClick={() => onStart(task.id)} className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-state-info transition-colors hover:bg-state-info/10">
+          <button onClick={(e) => { e.stopPropagation(); onStart(task.id) }} className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-state-info transition-colors hover:bg-state-info/10">
             <Play className="w-2.5 h-2.5" /> Start
           </button>
         )}
         {task.status === 'running' && (
-          <button onClick={() => onCancel(task.id)} className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-state-error transition-colors hover:bg-state-error/10">
+          <button onClick={(e) => { e.stopPropagation(); onCancel(task.id) }} className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-state-error transition-colors hover:bg-state-error/10">
             <StopCircle className="w-2.5 h-2.5" /> Cancel
           </button>
         )}
@@ -239,6 +240,80 @@ function TeamRunPanel({ taskId, teamId, onClose }: { taskId: string; teamId: str
   )
 }
 
+const STATUS_BADGE: Record<string, string> = {
+  pending: 'text-ink-3 bg-white/5 border-white/10',
+  running: 'text-state-info bg-state-info/10 border-state-info/25',
+  completed: 'text-state-success bg-state-success/10 border-state-success/25',
+  failed: 'text-state-error bg-state-error/10 border-state-error/25',
+  cancelled: 'text-ink-4 bg-white/5 border-white/10',
+}
+
+function TaskDetailPanel({ task, agents, teams, onClose }: { task: any; agents: any[]; teams: any[]; onClose: () => void }) {
+  const agent = agents.find((a: any) => a.id === task.agentId)
+  const team = teams.find((t: any) => t.id === task.teamId)
+  const outputText = typeof task.output === 'object' ? task.output?.result : task.output
+
+  return (
+    <div
+      className="flex-shrink-0 flex flex-col h-full overflow-hidden"
+      style={{ width: 320, background: 'rgba(12,12,14,0.8)', borderLeft: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <h3 className="text-ink-1 text-sm font-semibold truncate pr-2">Task Detail</h3>
+        <button onClick={onClose} className="p-1 hover:bg-white/5 rounded-lg transition-colors flex-shrink-0">
+          <X className="w-4 h-4 text-ink-3" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto p-4 space-y-4">
+        <div>
+          <p className="text-ink-4 text-[11px] mb-1">Name</p>
+          <p className="text-ink-1 text-sm font-medium">{task.name}</p>
+        </div>
+        {task.description && (
+          <div>
+            <p className="text-ink-4 text-[11px] mb-1">Description</p>
+            <p className="text-ink-2 text-xs leading-relaxed">{task.description}</p>
+          </div>
+        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`badge ${STATUS_BADGE[task.status] || STATUS_BADGE.pending}`}>{task.status}</span>
+          <span className={`badge ${PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium}`}>{task.priority}</span>
+        </div>
+        {(agent || team) && (
+          <div>
+            <p className="text-ink-4 text-[11px] mb-1">Assigned to</p>
+            <p className="text-ink-2 text-xs">{agent ? `Agent: ${agent.name}` : team ? `Team: ${team.name}` : ''}</p>
+          </div>
+        )}
+        {task.input?.prompt && (
+          <div>
+            <p className="text-ink-4 text-[11px] mb-1">Prompt</p>
+            <p className="text-ink-3 text-xs leading-relaxed whitespace-pre-wrap" style={{ background: 'rgba(255,255,255,0.03)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              {task.input.prompt}
+            </p>
+          </div>
+        )}
+        {outputText && (
+          <div>
+            <p className="text-ink-4 text-[11px] mb-1">Output</p>
+            <p className="text-ink-2 text-xs leading-relaxed whitespace-pre-wrap" style={{ background: 'rgba(74,222,128,0.05)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(74,222,128,0.1)' }}>
+              {outputText}
+            </p>
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <p className="text-ink-4 text-[11px]">Timestamps</p>
+          <div className="text-ink-3 text-[11px] space-y-0.5">
+            <p>Created: {new Date(task.createdAt).toLocaleString('zh-CN')}</p>
+            {task.startedAt && <p>Started: {new Date(task.startedAt).toLocaleString('zh-CN')}</p>}
+            {task.completedAt && <p>Completed: {new Date(task.completedAt).toLocaleString('zh-CN')}</p>}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function TasksApp() {
   const { data: tasks = [], isLoading, error } = useTasks()
   const { data: agents = [] } = useAgents()
@@ -249,75 +324,108 @@ export function TasksApp() {
   const deleteTask = useDeleteTask()
   const [showModal, setShowModal] = useState(false)
   const [teamRunTask, setTeamRunTask] = useState<any | null>(null)
+  const [selectedTask, setSelectedTask] = useState<any | null>(null)
+
+  const setTaskRunningCount = useBadgeStore(s => s.setTaskRunningCount)
 
   const grouped = COLUMNS.reduce((acc, col) => {
     acc[col.key] = tasks.filter((t: any) => col.key === 'completed' ? ['completed','failed','cancelled'].includes(t.status) : t.status === col.key)
     return acc
   }, {} as Record<string, any[]>)
 
+  useEffect(() => {
+    const runningCount = (grouped['running'] || []).length
+    setTaskRunningCount(runningCount)
+  }, [grouped, setTaskRunningCount])
+
+  const allEmpty = tasks.length === 0
+
   return (
-    <div className="h-full flex flex-col">
-      <div className="app-header">
-        <div>
-          <h2 className="text-ink-1 text-sm font-semibold">Tasks</h2>
-          <p className="text-ink-3 text-xs mt-0.5">{tasks.length} total</p>
+    <div className="h-full flex">
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="app-header">
+          <div>
+            <h2 className="text-ink-1 text-sm font-semibold">Tasks</h2>
+            <p className="text-ink-3 text-xs mt-0.5">{tasks.length} total</p>
+          </div>
+          <button onClick={() => setShowModal(true)} className="btn-primary"><Plus className="w-3.5 h-3.5" /> New Task</button>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn-primary"><Plus className="w-3.5 h-3.5" /> New Task</button>
+
+        {isLoading && <div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 text-ink-4 animate-spin" /></div>}
+
+        {error && (
+          <div className="flex items-center gap-2 p-3 rounded-lg text-state-error text-xs" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)' }}>
+            <AlertCircle className="w-4 h-4" /> Failed to load tasks.
+          </div>
+        )}
+
+        {!isLoading && allEmpty && (
+          <div className="flex-1 flex flex-col items-center justify-center text-ink-4">
+            <Inbox className="w-10 h-10 mb-3 opacity-30" strokeWidth={1.5} />
+            <p className="text-sm text-ink-3">No tasks yet</p>
+            <p className="text-xs mt-1 text-ink-disabled mb-4">Create a task to get your agents working</p>
+            <button onClick={() => setShowModal(true)} className="btn-primary">
+              <Plus className="w-3.5 h-3.5" /> Create Task
+            </button>
+          </div>
+        )}
+
+        {!isLoading && !allEmpty && (
+          <div className="flex-1 overflow-hidden grid grid-cols-4 gap-3 min-h-0">
+            {COLUMNS.map(({ key, label, Icon, color }) => {
+              const items = grouped[key] || []
+              return (
+                <div key={key} className="flex flex-col min-h-0">
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <Icon className={`w-3.5 h-3.5 ${color}`} strokeWidth={1.75} />
+                    <span className="text-ink-2 text-xs font-medium">{label}</span>
+                    <span className="ml-auto text-ink-4 text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.04)' }}>{items.length}</span>
+                  </div>
+                  <div className="flex-1 overflow-auto space-y-2">
+                    {items.map((task: any) => (
+                      <TaskCard key={task.id} task={task}
+                        onStart={(id: string) => startTask.mutate(id)}
+                        onCancel={(id: string) => cancelTask.mutate(id)}
+                        onDelete={(id: string) => { if (selectedTask?.id === id) setSelectedTask(null); deleteTask.mutate(id) }}
+                        onOpenTeamRun={(t: any) => setTeamRunTask(t)}
+                        onSelect={(t: any) => setSelectedTask(t)}
+                      />
+                    ))}
+                    {items.length === 0 && <div className="text-center text-ink-disabled text-xs py-5">Empty</div>}
+                  </div>
+                </div>
+              )
+            })}
+            <div className="min-h-0">
+              {teamRunTask?.teamId ? (
+                <TeamRunPanel
+                  taskId={teamRunTask.id}
+                  teamId={teamRunTask.teamId}
+                  onClose={() => setTeamRunTask(null)}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center text-ink-4 text-xs border border-white/10 rounded-xl">
+                  选择 Team 任务查看协作时间线
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showModal && (
+          <CreateTaskModal agents={agents} teams={teams} onClose={() => setShowModal(false)}
+            onSave={async (d: any) => { await createTask.mutateAsync(d); setShowModal(false) }}
+            saving={createTask.isPending}
+          />
+        )}
       </div>
 
-      {isLoading && <div className="flex-1 flex items-center justify-center"><Loader2 className="w-5 h-5 text-ink-4 animate-spin" /></div>}
-
-      {error && (
-        <div className="flex items-center gap-2 p-3 rounded-lg text-state-error text-xs" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)' }}>
-          <AlertCircle className="w-4 h-4" /> Failed to load tasks.
-        </div>
-      )}
-
-      {!isLoading && (
-        <div className="flex-1 overflow-hidden grid grid-cols-4 gap-3 min-h-0">
-          {COLUMNS.map(({ key, label, Icon, color }) => {
-            const items = grouped[key] || []
-            return (
-              <div key={key} className="flex flex-col min-h-0">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <Icon className={`w-3.5 h-3.5 ${color}`} strokeWidth={1.75} />
-                  <span className="text-ink-2 text-xs font-medium">{label}</span>
-                  <span className="ml-auto text-ink-4 text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.04)' }}>{items.length}</span>
-                </div>
-                <div className="flex-1 overflow-auto space-y-2">
-                  {items.map((task: any) => (
-                    <TaskCard key={task.id} task={task}
-                      onStart={(id: string) => startTask.mutate(id)}
-                      onCancel={(id: string) => cancelTask.mutate(id)}
-                      onDelete={(id: string) => deleteTask.mutate(id)}
-                      onOpenTeamRun={(t: any) => setTeamRunTask(t)}
-                    />
-                  ))}
-                  {items.length === 0 && <div className="text-center text-ink-disabled text-xs py-5">Empty</div>}
-                </div>
-              </div>
-            )
-          })}
-          <div className="min-h-0">
-            {teamRunTask?.teamId ? (
-              <TeamRunPanel
-                taskId={teamRunTask.id}
-                teamId={teamRunTask.teamId}
-                onClose={() => setTeamRunTask(null)}
-              />
-            ) : (
-              <div className="h-full flex items-center justify-center text-ink-4 text-xs border border-white/10 rounded-xl">
-                选择 Team 任务查看协作时间线
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showModal && (
-        <CreateTaskModal agents={agents} teams={teams} onClose={() => setShowModal(false)}
-          onSave={async (d: any) => { await createTask.mutateAsync(d); setShowModal(false) }}
-          saving={createTask.isPending}
+      {selectedTask && (
+        <TaskDetailPanel
+          task={selectedTask}
+          agents={agents as any[]}
+          teams={teams as any[]}
+          onClose={() => setSelectedTask(null)}
         />
       )}
     </div>

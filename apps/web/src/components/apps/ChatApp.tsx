@@ -2,11 +2,15 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Send, Bot, User, ChevronDown, Loader2, AlertCircle, Sparkles,
   Paperclip, X, Image as ImageIcon, FileText, Volume2, Video, Square, CheckCircle2, Play,
+  Plus, MessageSquare, Trash2,
 } from 'lucide-react'
 import { getSocket } from '../../lib/socket'
 import { useAgents } from '../../hooks/useAgents'
 import { MessageContent } from '../chat/MessageContent'
-import { tasksApi, teamsApi } from '../../lib/api'
+import { tasksApi, teamsApi, chatsApi } from '../../lib/api'
+import { useChats, useCreateChat, useDeleteChat } from '../../hooks/useChats'
+import { useBadgeStore } from '../../stores/badgeStore'
+import { useWindowStore } from '../../stores/windowStore'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -14,7 +18,7 @@ interface Attachment {
   id: string
   type: 'image' | 'audio' | 'video' | 'file'
   name: string
-  url: string        // object URL or data URL
+  url: string
   mimeType: string
 }
 
@@ -74,6 +78,11 @@ function AttachmentPreview({ att, onRemove }: { att: Attachment; onRemove?: () =
 
 export function ChatApp() {
   const { data: agents = [] } = useAgents()
+  const { data: sessions = [], isLoading: sessionsLoading } = useChats()
+  const createChat = useCreateChat()
+  const deleteChat = useDeleteChat()
+
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -85,11 +94,22 @@ export function ChatApp() {
   const streamingIdRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const activeSessionIdRef = useRef(activeSessionId)
+  activeSessionIdRef.current = activeSessionId
 
   const selectedAgent = agents.find((a: any) => a.id === selectedAgentId)
   const dispatchMode = (localStorage.getItem('nexus_dispatch_mode') as 'auto' | 'confirm') || 'auto'
   const dispatchModeRef = useRef(dispatchMode)
   dispatchModeRef.current = dispatchMode
+
+  const incrementChatUnread = useBadgeStore(s => s.incrementChatUnread)
+  const resetChatUnread = useBadgeStore(s => s.resetChatUnread)
+  const activeWindowId = useWindowStore(s => s.activeWindowId)
+  const isChatFocused = activeWindowId === 'chat'
+
+  useEffect(() => {
+    if (isChatFocused) resetChatUnread()
+  }, [isChatFocused, resetChatUnread])
 
   useEffect(() => {
     if (!agents.length || selectedAgentId) return
@@ -97,17 +117,79 @@ export function ChatApp() {
     setSelectedAgentId(nexusCore?.id || agents[0].id)
   }, [agents, selectedAgentId])
 
+  const welcomeCreatedRef = useRef(false)
+
+  // Load last active session on mount; create welcome session if first time
+  useEffect(() => {
+    if (sessionsLoading || activeSessionId) return
+    if (sessions.length > 0) {
+      loadSession(sessions[0].id)
+    } else if (!welcomeCreatedRef.current) {
+      welcomeCreatedRef.current = true
+      ;(async () => {
+        try {
+          const session = await chatsApi.create({ agentId: 'nexus-core', title: 'Welcome' })
+          const welcomeContent = '你好！我是 NexusCore，你的 AI 工作助手。我可以帮你分配任务给专属 Agent、协调多 Agent 团队协作、构建自动化工作流。试着说：帮我写一份产品介绍，或者 用研究团队分析竞品'
+          await chatsApi.addMessage(session.id, { role: 'assistant', content: welcomeContent })
+          setActiveSessionId(session.id)
+          setMessages([{
+            id: 'welcome',
+            role: 'assistant',
+            content: welcomeContent,
+          }])
+          createChat.reset()
+        } catch {}
+      })()
+    }
+  }, [sessionsLoading, sessions])
+
+  const loadSession = useCallback(async (sessionId: string) => {
+    setActiveSessionId(sessionId)
+    try {
+      const msgs = await chatsApi.getMessages(sessionId)
+      const sorted = [...msgs].sort((a: any, b: any) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
+      setMessages(sorted.map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+      })))
+    } catch {
+      setMessages([])
+    }
+  }, [])
+
+  const handleNewChat = useCallback(async () => {
+    const session = await createChat.mutateAsync({ agentId: selectedAgentId || undefined })
+    setActiveSessionId(session.id)
+    setMessages([])
+  }, [createChat, selectedAgentId])
+
+  const handleDeleteSession = useCallback(async (id: string) => {
+    await deleteChat.mutateAsync(id)
+    if (activeSessionId === id) {
+      setActiveSessionId(null)
+      setMessages([])
+    }
+  }, [deleteChat, activeSessionId])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`
   }, [input])
+
+  const persistMessage = useCallback(async (sessionId: string, role: string, content: string) => {
+    try {
+      await chatsApi.addMessage(sessionId, { role, content })
+    } catch {}
+  }, [])
 
   // Socket events
   useEffect(() => {
@@ -120,19 +202,30 @@ export function ChatApp() {
     }
     const onDone = (data: { content?: string; dispatch?: DispatchDirective }) => {
       const mode = dispatchModeRef.current
-      setMessages(prev => prev.map(m =>
-        m.id === streamingIdRef.current
-          ? {
-              ...m,
-              streaming: false,
-              dispatch: data.dispatch || undefined,
-              dispatchState: data.dispatch ? (mode === 'auto' ? 'running' : 'idle') : undefined,
-            }
-          : m
-      ))
       const completedMessageId = streamingIdRef.current
+
+      setMessages(prev => {
+        const updated = prev.map(m =>
+          m.id === completedMessageId
+            ? {
+                ...m,
+                streaming: false,
+                dispatch: data.dispatch || undefined,
+                dispatchState: data.dispatch ? (mode === 'auto' ? 'running' as const : 'idle' as const) : undefined,
+              }
+            : m
+        )
+        const msg = updated.find(m => m.id === completedMessageId)
+        if (msg && msg.content && activeSessionIdRef.current) {
+          persistMessage(activeSessionIdRef.current, 'assistant', msg.content)
+        }
+        return updated
+      })
+
       streamingIdRef.current = null
       setIsStreaming(false)
+
+      if (!isChatFocused) incrementChatUnread()
 
       if (data.dispatch && completedMessageId && mode === 'auto') {
         void executeDispatch(data.dispatch, completedMessageId)
@@ -163,7 +256,33 @@ export function ChatApp() {
       socket.off('chat:error', onError)
       socket.off('chat:stopped', onStopped)
     }
-  }, [])
+  }, [isChatFocused])
+
+  // Subscribe to task:done for dispatch follow-ups
+  useEffect(() => {
+    const socket = getSocket()
+    const onTaskDone = (data: { taskId: string; output: string; taskName: string }) => {
+      setMessages(prev => {
+        const dispatchMsg = prev.find(m => m.dispatchState === 'running' && m.dispatchTaskId === data.taskId)
+        if (!dispatchMsg) return prev
+        const followUp: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `Task **${data.taskName}** completed. Here is the result:\n\n${data.output}`,
+        }
+        if (activeSessionIdRef.current) {
+          persistMessage(activeSessionIdRef.current, 'assistant', followUp.content)
+        }
+        if (!isChatFocused) incrementChatUnread()
+        return [
+          ...prev.map(m => m.id === dispatchMsg.id ? { ...m, dispatchState: 'completed' as const } : m),
+          followUp,
+        ]
+      })
+    }
+    socket.on('task:done', onTaskDone)
+    return () => { socket.off('task:done', onTaskDone) }
+  }, [isChatFocused])
 
   const executeDispatch = useCallback(async (dispatch: DispatchDirective, messageId: string) => {
     try {
@@ -177,7 +296,7 @@ export function ChatApp() {
         })
         setMessages(prev => prev.map(m =>
           m.id === messageId
-            ? { ...m, dispatchState: 'completed', dispatchTaskId: teamRun.taskId }
+            ? { ...m, dispatchTaskId: teamRun.taskId }
             : m
         ))
         return
@@ -197,7 +316,7 @@ export function ChatApp() {
 
       setMessages(prev => prev.map(m =>
         m.id === messageId
-          ? { ...m, dispatchState: 'completed', dispatchTaskId: created.id }
+          ? { ...m, dispatchTaskId: created.id }
           : m
       ))
     } catch (err: any) {
@@ -240,13 +359,11 @@ export function ChatApp() {
     })
   }
 
-  // Paste image from clipboard
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const files = Array.from(e.clipboardData.files).filter(f => f.type.startsWith('image/'))
     if (files.length) addFiles(files)
   }, [addFiles])
 
-  // Drag & drop
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files)
@@ -254,16 +371,20 @@ export function ChatApp() {
 
   // ── Send ───────────────────────────────────────────────────────────────────
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     if ((!input.trim() && attachments.length === 0) || isStreaming) return
     setError(null)
 
-    // Build user message content: text + attachment inline refs
+    let sessionId = activeSessionId
+    if (!sessionId) {
+      const session = await createChat.mutateAsync({ agentId: selectedAgentId || undefined })
+      sessionId = session.id
+      setActiveSessionId(sessionId)
+    }
+
     let userContent = input.trim()
     attachments.forEach(att => {
       if (att.type === 'image') userContent += `\n\n![${att.name}](${att.url})`
-      else if (att.type === 'video') userContent += `\n\n[${att.name}](${att.url})`
-      else if (att.type === 'audio') userContent += `\n\n[${att.name}](${att.url})`
       else userContent += `\n\n[${att.name}](${att.url})`
     })
 
@@ -288,6 +409,8 @@ export function ChatApp() {
     setIsStreaming(true)
     streamingIdRef.current = assistantId
 
+    persistMessage(sessionId!, 'user', userContent)
+
     const socket = getSocket()
     socket.emit('chat:message', {
       agentId: selectedAgentId || undefined,
@@ -296,7 +419,7 @@ export function ChatApp() {
       model: selectedAgent?.config?.model,
       dispatchMode,
     })
-  }, [input, attachments, isStreaming, messages, selectedAgentId, selectedAgent, dispatchMode])
+  }, [input, attachments, isStreaming, messages, selectedAgentId, selectedAgent, dispatchMode, activeSessionId, createChat, persistMessage])
 
   const handleStop = useCallback(() => {
     const socket = getSocket()
@@ -307,219 +430,252 @@ export function ChatApp() {
 
   return (
     <div
-      className="h-full flex flex-col gap-3"
+      className="h-full flex"
       onDragOver={e => e.preventDefault()}
       onDrop={handleDrop}
     >
-      {/* Agent selector */}
-      <div className="flex items-center gap-2 pb-3 border-b border-white/[0.06] flex-shrink-0">
-        <Sparkles className="w-3.5 h-3.5 text-desktop-accent flex-shrink-0" strokeWidth={1.75} />
-        <span className="text-ink-3 text-xs">Agent:</span>
-        <div className="relative">
-          <select
-            value={selectedAgentId}
-            onChange={e => setSelectedAgentId(e.target.value)}
-            className="pl-2.5 pr-6 py-1 text-xs rounded-lg appearance-none cursor-pointer text-ink-1 focus:outline-none"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+      {/* Left sidebar — chat sessions */}
+      <div
+        className="flex-shrink-0 flex flex-col"
+        style={{ width: 200, background: 'rgba(12,12,14,0.6)', borderRight: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <div className="p-2 flex-shrink-0">
+          <button
+            onClick={handleNewChat}
+            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-desktop-accent transition-colors hover:bg-desktop-accent/10"
+            style={{ border: '1px solid rgba(232,76,106,0.25)' }}
           >
-            <option value="">Default</option>
-            {agents.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-          <ChevronDown className="w-3 h-3 text-ink-4 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Plus className="w-3.5 h-3.5" /> New Chat
+          </button>
         </div>
-        {selectedAgent?.config?.model && (
-          <span className="text-ink-4 text-[11px] font-mono">{selectedAgent.config.model}</span>
-        )}
-        {selectedAgentId === 'nexus-core' && (
-          <span className="badge text-[10px] text-emerald-300 bg-emerald-500/10 border-emerald-500/20">主助手</span>
-        )}
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-auto space-y-4 min-h-0 pr-1">
-        {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-ink-4 select-none">
-            <Bot className="w-8 h-8 mb-2 opacity-30" strokeWidth={1.5} />
-            <p className="text-sm text-ink-3">开始对话</p>
-            <p className="text-xs mt-1 text-ink-4">支持 Markdown · 代码高亮 · 图片/视频/音频</p>
-            {selectedAgent?.systemPrompt && (
-              <p className="text-xs mt-2 max-w-xs text-center text-ink-4 italic leading-relaxed">
-                "{selectedAgent.systemPrompt}"
-              </p>
-            )}
-          </div>
-        )}
-
-        {messages.map(message => (
-          <div key={message.id} className={`msg-bubble flex gap-2.5 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
-            {/* Avatar */}
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform hover:scale-110 ${
-              message.role === 'user' ? 'bg-desktop-accent' : 'bg-white/8'
-            }`}>
-              {message.role === 'user'
-                ? <User className="w-3 h-3 text-white" strokeWidth={2} />
-                : <Bot className="w-3 h-3 text-ink-2" strokeWidth={1.75} />
-              }
-            </div>
-
-            {/* Bubble */}
+        <div className="flex-1 overflow-auto px-1 space-y-0.5">
+          {sessionsLoading && (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 text-ink-4 animate-spin" /></div>
+          )}
+          {(sessions as any[]).map((s: any) => (
             <div
-              className={`max-w-[78%] px-3 py-2 rounded-xl text-sm leading-relaxed transition-colors ${
-                message.role === 'user'
-                  ? 'bg-desktop-accent text-white rounded-tr-sm'
-                  : 'text-ink-1 rounded-tl-sm'
+              key={s.id}
+              className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                activeSessionId === s.id ? 'bg-white/8 text-ink-1' : 'text-ink-3 hover:bg-white/5'
               }`}
-              style={message.role === 'assistant'
-                ? { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)' }
-                : {}
-              }
+              onClick={() => loadSession(s.id)}
             >
-              {/* Streaming placeholder */}
-              {message.streaming && !message.content && (
-                <span className="flex items-center gap-1.5 text-ink-3">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span className="text-xs">思考中…</span>
-                </span>
-              )}
-
-              {/* Content */}
-              {message.content && (
-                <MessageContent content={message.content} streaming={message.streaming} />
-              )}
-
-              {/* Streaming cursor */}
-              {message.streaming && message.content && (
-                <span className="inline-block w-0.5 h-3.5 bg-ink-2/60 ml-0.5 animate-pulse" />
-              )}
-
-              {/* NexusCore dispatch card */}
-              {message.dispatch && (
-                <div
-                  className="mt-2.5 rounded-lg p-2.5 space-y-1.5"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-                >
-                  <div className="text-[11px] text-ink-3">
-                    派活目标：
-                    <span className="text-ink-2 ml-1 font-medium">
-                      {message.dispatch.target.type === 'team' ? 'Team' : 'Agent'} · {message.dispatch.target.id}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-ink-4">{message.dispatch.task.name}</div>
-                  {message.dispatch.reason ? (
-                    <div className="text-[11px] text-ink-4 leading-relaxed">{message.dispatch.reason}</div>
-                  ) : null}
-
-                  <div className="flex items-center gap-2 pt-1">
-                    {message.dispatchState === 'idle' ? (
-                      <button
-                        onClick={() => executeDispatch(message.dispatch!, message.id)}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded text-[11px] text-state-success"
-                        style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.25)' }}
-                      >
-                        <Play className="w-3 h-3" /> 确认执行
-                      </button>
-                    ) : null}
-                    {message.dispatchState === 'running' ? (
-                      <span className="flex items-center gap-1 text-[11px] text-state-info">
-                        <Loader2 className="w-3 h-3 animate-spin" /> 执行中...
-                      </span>
-                    ) : null}
-                    {message.dispatchState === 'completed' ? (
-                      <span className="flex items-center gap-1 text-[11px] text-state-success">
-                        <CheckCircle2 className="w-3 h-3" /> 已创建任务 {message.dispatchTaskId?.slice(0, 8)}
-                      </span>
-                    ) : null}
-                    {message.dispatchState === 'failed' ? (
-                      <span className="text-[11px] text-state-error">执行失败：{message.dispatchError}</span>
-                    ) : null}
-                  </div>
-                </div>
-              )}
+              <MessageSquare className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
+              <span className="flex-1 text-xs truncate">{s.title}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDeleteSession(s.id) }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-state-error/10 rounded transition-all flex-shrink-0"
+              >
+                <Trash2 className="w-2.5 h-2.5 text-state-error/70" strokeWidth={1.75} />
+              </button>
             </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-state-error text-xs flex-shrink-0 animate-slideUp cursor-pointer"
-          style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)' }}
-          onClick={() => setError(null)}
-          title="点击关闭"
-        >
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-          <span className="flex-1">{error}</span>
-          <X className="w-3 h-3 flex-shrink-0 opacity-50 hover:opacity-100" />
-        </div>
-      )}
-
-      {/* Attachment previews */}
-      {attachments.length > 0 && (
-        <div className="flex gap-2 flex-wrap flex-shrink-0">
-          {attachments.map(att => (
-            <AttachmentPreview key={att.id} att={att} onRemove={() => removeAttachment(att.id)} />
           ))}
         </div>
-      )}
+      </div>
 
-      {/* Input row */}
-      <div
-        className="flex gap-2 flex-shrink-0 items-end rounded-xl p-1.5"
-        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-      >
-        {/* Attach button */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="p-1.5 rounded-lg text-ink-4 hover:text-ink-2 hover:bg-white/5 transition-colors flex-shrink-0"
-          title="附加文件 (图片/视频/音频)"
-          disabled={isStreaming}
-        >
-          <Paperclip className="w-4 h-4" />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/*,audio/*,video/*"
-          className="hidden"
-          onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = '' }}
-        />
+      {/* Right — chat area */}
+      <div className="flex-1 flex flex-col gap-3 p-3 min-w-0">
+        {/* Agent selector */}
+        <div className="flex items-center gap-2 pb-3 border-b border-white/[0.06] flex-shrink-0">
+          <Sparkles className="w-3.5 h-3.5 text-desktop-accent flex-shrink-0" strokeWidth={1.75} />
+          <span className="text-ink-3 text-xs">Agent:</span>
+          <div className="relative">
+            <select
+              value={selectedAgentId}
+              onChange={e => setSelectedAgentId(e.target.value)}
+              className="pl-2.5 pr-6 py-1 text-xs rounded-lg appearance-none cursor-pointer text-ink-1 focus:outline-none"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              <option value="">Default</option>
+              {agents.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+            <ChevronDown className="w-3 h-3 text-ink-4 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+          {selectedAgent?.config?.model && (
+            <span className="text-ink-4 text-[11px] font-mono">{selectedAgent.config.model}</span>
+          )}
+          {selectedAgentId === 'nexus-core' && (
+            <span className="badge text-[10px] text-emerald-300 bg-emerald-500/10 border-emerald-500/20">主助手</span>
+          )}
+        </div>
 
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-          onPaste={handlePaste}
-          placeholder={isStreaming ? '生成中… (点击 ■ 停止)' : '输入消息… (Enter 发送，Shift+Enter 换行，可粘贴图片)'}
-          disabled={isStreaming}
-          rows={1}
-          className="flex-1 resize-none bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none disabled:opacity-40 py-1 px-1"
-          style={{ minHeight: '30px', maxHeight: '120px' }}
-        />
+        {/* Messages */}
+        <div className="flex-1 overflow-auto space-y-4 min-h-0 pr-1">
+          {messages.length === 0 && (
+            <div className="h-full flex flex-col items-center justify-center text-ink-4 select-none">
+              <Bot className="w-8 h-8 mb-2 opacity-30" strokeWidth={1.5} />
+              <p className="text-sm text-ink-3">开始对话</p>
+              <p className="text-xs mt-1 text-ink-4">支持 Markdown · 代码高亮 · 图片/视频/音频</p>
+              {selectedAgent?.systemPrompt && (
+                <p className="text-xs mt-2 max-w-xs text-center text-ink-4 italic leading-relaxed">
+                  "{selectedAgent.systemPrompt}"
+                </p>
+              )}
+            </div>
+          )}
 
-        {/* Stop / Send button */}
-        {isStreaming ? (
-          <button
-            onClick={handleStop}
-            className="p-2 flex-shrink-0 rounded-lg text-white transition-colors"
-            style={{ background: 'rgba(248,113,113,0.2)', border: '1px solid rgba(248,113,113,0.35)' }}
-            title="停止生成"
+          {messages.map(message => (
+            <div key={message.id} className={`msg-bubble flex gap-2.5 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform hover:scale-110 ${
+                message.role === 'user' ? 'bg-desktop-accent' : 'bg-white/8'
+              }`}>
+                {message.role === 'user'
+                  ? <User className="w-3 h-3 text-white" strokeWidth={2} />
+                  : <Bot className="w-3 h-3 text-ink-2" strokeWidth={1.75} />
+                }
+              </div>
+
+              <div
+                className={`max-w-[78%] px-3 py-2 rounded-xl text-sm leading-relaxed transition-colors ${
+                  message.role === 'user'
+                    ? 'bg-desktop-accent text-white rounded-tr-sm'
+                    : 'text-ink-1 rounded-tl-sm'
+                }`}
+                style={message.role === 'assistant'
+                  ? { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)' }
+                  : {}
+                }
+              >
+                {message.streaming && !message.content && (
+                  <span className="flex items-center gap-1.5 text-ink-3">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span className="text-xs">思考中…</span>
+                  </span>
+                )}
+
+                {message.content && (
+                  <MessageContent content={message.content} streaming={message.streaming} />
+                )}
+
+                {message.streaming && message.content && (
+                  <span className="inline-block w-0.5 h-3.5 bg-ink-2/60 ml-0.5 animate-pulse" />
+                )}
+
+                {message.dispatch && (
+                  <div
+                    className="mt-2.5 rounded-lg p-2.5 space-y-1.5"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    <div className="text-[11px] text-ink-3">
+                      派活目标：
+                      <span className="text-ink-2 ml-1 font-medium">
+                        {message.dispatch.target.type === 'team' ? 'Team' : 'Agent'} · {message.dispatch.target.id}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-ink-4">{message.dispatch.task.name}</div>
+                    {message.dispatch.reason ? (
+                      <div className="text-[11px] text-ink-4 leading-relaxed">{message.dispatch.reason}</div>
+                    ) : null}
+
+                    <div className="flex items-center gap-2 pt-1">
+                      {message.dispatchState === 'idle' ? (
+                        <button
+                          onClick={() => executeDispatch(message.dispatch!, message.id)}
+                          className="flex items-center gap-1.5 px-2 py-1 rounded text-[11px] text-state-success"
+                          style={{ background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.25)' }}
+                        >
+                          <Play className="w-3 h-3" /> 确认执行
+                        </button>
+                      ) : null}
+                      {message.dispatchState === 'running' ? (
+                        <span className="flex items-center gap-1 text-[11px] text-state-info">
+                          <Loader2 className="w-3 h-3 animate-spin" /> 执行中...
+                        </span>
+                      ) : null}
+                      {message.dispatchState === 'completed' ? (
+                        <span className="flex items-center gap-1 text-[11px] text-state-success">
+                          <CheckCircle2 className="w-3 h-3" /> 已创建任务 {message.dispatchTaskId?.slice(0, 8)}
+                        </span>
+                      ) : null}
+                      {message.dispatchState === 'failed' ? (
+                        <span className="text-[11px] text-state-error">执行失败：{message.dispatchError}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-state-error text-xs flex-shrink-0 animate-slideUp cursor-pointer"
+            style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)' }}
+            onClick={() => setError(null)}
+            title="点击关闭"
           >
-            <Square className="w-4 h-4 text-red-400 fill-red-400" />
-          </button>
-        ) : (
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() && attachments.length === 0}
-            className="btn-primary p-2 flex-shrink-0 disabled:opacity-40 rounded-lg"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="flex-1">{error}</span>
+            <X className="w-3 h-3 flex-shrink-0 opacity-50 hover:opacity-100" />
+          </div>
         )}
+
+        {/* Attachment previews */}
+        {attachments.length > 0 && (
+          <div className="flex gap-2 flex-wrap flex-shrink-0">
+            {attachments.map(att => (
+              <AttachmentPreview key={att.id} att={att} onRemove={() => removeAttachment(att.id)} />
+            ))}
+          </div>
+        )}
+
+        {/* Input row */}
+        <div
+          className="flex gap-2 flex-shrink-0 items-end rounded-xl p-1.5"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-1.5 rounded-lg text-ink-4 hover:text-ink-2 hover:bg-white/5 transition-colors flex-shrink-0"
+            title="附加文件 (图片/视频/音频)"
+            disabled={isStreaming}
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,audio/*,video/*"
+            className="hidden"
+            onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = '' }}
+          />
+
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+            onPaste={handlePaste}
+            placeholder={isStreaming ? '生成中… (点击 ■ 停止)' : '输入消息… (Enter 发送，Shift+Enter 换行，可粘贴图片)'}
+            disabled={isStreaming}
+            rows={1}
+            className="flex-1 resize-none bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none disabled:opacity-40 py-1 px-1"
+            style={{ minHeight: '30px', maxHeight: '120px' }}
+          />
+
+          {isStreaming ? (
+            <button
+              onClick={handleStop}
+              className="p-2 flex-shrink-0 rounded-lg text-white transition-colors"
+              style={{ background: 'rgba(248,113,113,0.2)', border: '1px solid rgba(248,113,113,0.35)' }}
+              title="停止生成"
+            >
+              <Square className="w-4 h-4 text-red-400 fill-red-400" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() && attachments.length === 0}
+              className="btn-primary p-2 flex-shrink-0 disabled:opacity-40 rounded-lg"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

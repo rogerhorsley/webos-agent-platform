@@ -379,7 +379,13 @@ export function AgentTeamApp() {
         <div className="flex-1 flex flex-col items-center justify-center text-ink-4">
           <Bot className="w-10 h-10 mb-2 opacity-30" />
           <p className="text-sm">No agents yet</p>
-          <p className="text-xs mt-0.5 text-ink-disabled">Click "New Agent" to get started</p>
+          <p className="text-xs mt-1 text-ink-disabled mb-4">Install agents from the marketplace to get started</p>
+          <button
+            onClick={() => setTab('market')}
+            className="btn-primary"
+          >
+            <Store className="w-3.5 h-3.5" /> Browse Market
+          </button>
         </div>
       )}
 
